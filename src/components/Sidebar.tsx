@@ -15,6 +15,7 @@ import type { Account, Session, Usage } from "../lib/api";
 import { cx, timeAgo } from "../lib/format";
 import { cellsStore, useStore } from "../lib/store";
 import { Badge, IconButton, Spinner, StatusDot } from "./ui";
+import { AppMark } from "./AppMark";
 
 export type View = { kind: "home" } | { kind: "session"; name: string } | { kind: "models" } | { kind: "history" } | { kind: "settings" };
 export type Theme = "system" | "light" | "dark";
@@ -62,9 +63,7 @@ export function Sidebar({
   return (
     <aside className="flex w-[260px] shrink-0 flex-col border-r border-border bg-sidebar">
       <div className="flex items-center gap-2.5 px-4 pt-4 pb-3">
-        <div className="flex size-7 items-center justify-center rounded-lg bg-gradient-to-br from-amber-400 to-orange-600 text-[11px] font-bold text-white shadow-sm">
-          CO
-        </div>
+        <AppMark size={28} />
         <div className="min-w-0 leading-tight">
           <div className="text-[13px] font-semibold">Colab CLI</div>
           <div className="text-[11px] text-muted-foreground">{version ? `google-colab-cli ${version}` : "检测中…"}</div>

@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2a2a2f"/>
+      <stop offset="1" stop-color="#141417"/>
+    </linearGradient>
+    <linearGradient id="ring" x1="0.15" y1="0.1" x2="0.85" y2="0.95">
+      <stop offset="0" stop-color="#ffc42e"/>
+      <stop offset="1" stop-color="#f26b0f"/>
+    </linearGradient>
+    <linearGradient id="sheen" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.10"/>
+      <stop offset="0.5" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <!-- Tile: a dark rounded square, so the mark reads as its own app. -->
+  <rect x="80" y="80" width="864" height="864" rx="196" fill="url(#bg)"/>
+  <rect x="80" y="80" width="864" height="864" rx="196" fill="url(#sheen)"/>
+  <!-- An open ring, its gap to the right, in Colab's warm orange family. -->
+  <path d="M 709.1 689.4 A 265 265 0 1 1 709.1 334.6" fill="none" stroke="url(#ring)" stroke-width="104" stroke-linecap="round"/>
+  <!-- A terminal prompt inside: this is the command line, made visual. -->
+  <polyline points="414,426 500,512 414,598" fill="none" stroke="#ffffff" stroke-width="54" stroke-linecap="round" stroke-linejoin="round"/>
+  <line x1="534" y1="598" x2="626" y2="598" stroke="#ffb020" stroke-width="54" stroke-linecap="round"/>
+</svg>

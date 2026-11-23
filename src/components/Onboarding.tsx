@@ -5,6 +5,7 @@ import { cx } from "../lib/format";
 import { toast } from "../lib/store";
 import { Output } from "./Output";
 import { Button, Spinner, inputClass } from "./ui";
+import { AppMark } from "./AppMark";
 
 const WINDOWS = navigator.userAgent.includes("Windows");
 const UV_INSTALL = WINDOWS
@@ -31,9 +32,7 @@ export function Onboarding({
     <div className="flex h-full items-center justify-center overflow-y-auto p-6">
       <div className="w-full max-w-[560px]">
         <div className="mb-6 flex items-center gap-3">
-          <div className="flex size-10 items-center justify-center rounded-xl bg-gradient-to-br from-amber-400 to-orange-600 text-sm font-bold text-white shadow-sm">
-            CO
-          </div>
+          <AppMark size={40} />
           <div>
             <div className="text-lg font-semibold">开始使用 Colab CLI</div>
             <div className="text-xs text-muted-foreground">三步完成，之后不用再做</div>
