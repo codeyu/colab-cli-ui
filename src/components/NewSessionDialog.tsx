@@ -1,0 +1,152 @@
+import { useEffect, useRef, useState } from "react";
+import { Cpu, Server, Sparkles } from "lucide-react";
+import { Colab, errorMessage, isAbort, streamCall, type Chunk, type Usage } from "../lib/api";
+import { ACCELERATORS, eligibilityOf } from "../lib/accelerators";
+import { cx, randomName } from "../lib/format";
+import { toast } from "../lib/store";
+import { Output } from "./Output";
+import { Button, Dialog, Field, Toggle, inputClass } from "./ui";
+
+export function NewSessionDialog({
+  open,
+  onClose,
+  onCreated,
+  usage,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onCreated: (name: string) => void;
+  usage: Usage | null;
+}) {
+  const [name, setName] = useState(randomName());
+  const [acc, setAcc] = useState("CPU");
+  const [highMem, setHighMem] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [chunks, setChunks] = useState<Chunk[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const abort = useRef<AbortController | null>(null);
+  const info = ACCELERATORS.find((a) => a.id === acc)!;
+
+  useEffect(() => {
+    if (open && !busy) {
+      setName(randomName());
+      setChunks([]);
+      setError(null);
+    }
+  }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const valid = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,62}$/.test(name);
+
+  async function create() {
+    setBusy(true);
+    setError(null);
+    setChunks([]);
+    const ac = new AbortController();
+    abort.current = ac;
+    try {
+      await streamCall(
+        (ch) => Colab.createSession.with({ signal: ac.signal })({ name, accelerator: acc, highMem: highMem && info.highMem }, ch),
+        (c) => setChunks((l) => [...l, c]),
+      );
+      toast("success", `会话 ${name} 已就绪`, `${info.label}${highMem && info.highMem ? " · 高内存" : ""}`);
+      onCreated(name);
+      onClose();
+    } catch (e) {
+      setError(isAbort(e) ? "已取消申请" : errorMessage(e));
+    } finally {
+      setBusy(false);
+      abort.current = null;
+    }
+  }
+
+  return (
+    <Dialog
+      open={open}
+      onClose={() => !busy && onClose()}
+      title="新建 Colab 会话"
+      description="申请一台新的虚拟机运行时（colab new）。GPU / TPU 会按小时消耗计算单元。"
+      width={640}
+      footer={
+        <>
+          {busy ? (
+            <Button variant="ghost" onClick={() => abort.current?.abort()}>
+              取消
+            </Button>
+          ) : (
+            <Button variant="ghost" onClick={onClose}>
+              关闭
+            </Button>
+          )}
+          <Button variant="accent" loading={busy} disabled={!valid} onClick={create} icon={<Sparkles className="size-3.5" />}>
+            {busy ? "正在申请…" : "创建会话"}
+          </Button>
+        </>
+      }
+    >
+      <div className="flex flex-col gap-4">
+        <Field label="会话名称" hint="之后所有命令都用 -s 名称 指向这个会话">
+          <input
+            className={cx(inputClass, !valid && "border-danger/60")}
+            value={name}
+            onChange={(e) => setName(e.target.value.trim())}
+            disabled={busy}
+            autoFocus
+          />
+        </Field>
+
+        <div>
+          <div className="mb-1.5 text-xs font-medium">硬件</div>
+          <div className="grid grid-cols-4 gap-2">
+            {ACCELERATORS.map((a) => {
+              const state = eligibilityOf(usage, a.id);
+              const blocked = state === "ineligible";
+              return (
+                <button
+                  key={a.id}
+                  type="button"
+                  disabled={busy || blocked}
+                  onClick={() => setAcc(a.id)}
+                  className={cx(
+                    "flex flex-col items-start gap-0.5 rounded-lg border p-2.5 text-left transition-colors",
+                    blocked
+                      ? "cursor-not-allowed border-border opacity-35"
+                      : acc === a.id
+                        ? "border-accent bg-accent-soft"
+                        : "border-border hover:bg-muted",
+                  )}
+                >
+                  <div className="flex w-full items-center justify-between">
+                    <span className="text-[13px] font-semibold">{a.label}</span>
+                    {a.kind === "CPU" ? (
+                      <Cpu className="size-3.5 text-muted-foreground" />
+                    ) : (
+                      <Server className={cx("size-3.5", acc === a.id ? "text-accent" : "text-muted-foreground")} />
+                    )}
+                  </div>
+                  <span className="text-[11px] text-muted-foreground">
+                    {a.kind} · {a.memory}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+          <div className="mt-2 text-[11px] text-muted-foreground">
+            {info.note}
+          </div>
+        </div>
+
+        <div className={cx(!info.highMem && "pointer-events-none opacity-50")}>
+          <Toggle checked={highMem && info.highMem} onChange={setHighMem} label="高内存机型（--high-mem，需要 Pro / Pro+）" />
+          {!info.highMem && <div className="mt-1 text-[11px] text-muted-foreground">该加速器只有一种机型。</div>}
+        </div>
+
+        {(chunks.length > 0 || error) && (
+          <div className="max-h-48 overflow-auto rounded-lg border border-border bg-console p-3">
+            <Output chunks={chunks} />
+            {error && <div className="ansi-out selectable mt-1 text-danger">{error}</div>}
+          </div>
+        )}
+      </div>
+    </Dialog>
+  );
+}

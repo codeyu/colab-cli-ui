@@ -1,0 +1,149 @@
+@import "tailwindcss";
+@import "@fontsource-variable/inter";
+@import "@fontsource-variable/jetbrains-mono";
+
+@custom-variant dark (&:is(.dark, .dark *));
+
+/* Tokens after t3code's neutral palette: a quiet sidebar, hairline borders and
+   a single accent. Light first; .dark on <html> switches them. */
+:root {
+  --background: #ffffff;
+  --foreground: #18181b;
+  --muted: #f4f4f5;
+  --muted-foreground: #71717a;
+  --sidebar: #fafafa;
+  --sidebar-accent: #f0f0f2;
+  --border: #e7e7ea;
+  --input: #e4e4e7;
+  --card: #ffffff;
+  --popover: #ffffff;
+  --primary: #18181b;
+  --primary-foreground: #fafafa;
+  --accent: #f97316; /* Colab orange */
+  --accent-soft: color-mix(in srgb, #f97316 12%, transparent);
+  --success: #16a34a;
+  --warning: #d97706;
+  --danger: #dc2626;
+  --info: #2563eb;
+  --console: #fbfbfc;
+  --scrollbar: #d9d9de;
+  color-scheme: light;
+}
+
+.dark {
+  --background: #0d0d0f;
+  --foreground: #ededef;
+  --muted: #19191c;
+  --muted-foreground: #8b8b94;
+  --sidebar: #111113;
+  --sidebar-accent: #1c1c20;
+  --border: #232327;
+  --input: #2a2a2f;
+  --card: #141416;
+  --popover: #17171a;
+  --primary: #ededef;
+  --primary-foreground: #111113;
+  --accent: #fb923c;
+  --accent-soft: color-mix(in srgb, #fb923c 14%, transparent);
+  --success: #22c55e;
+  --warning: #f59e0b;
+  --danger: #f87171;
+  --info: #60a5fa;
+  --console: #0a0a0c;
+  --scrollbar: #2c2c31;
+  color-scheme: dark;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-card: var(--card);
+  --color-popover: var(--popover);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-accent: var(--accent);
+  --color-accent-soft: var(--accent-soft);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-danger: var(--danger);
+  --color-info: var(--info);
+  --color-console: var(--console);
+  --font-sans: "Inter Variable", "Microsoft YaHei UI", "PingFang SC", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono Variable", "Cascadia Mono", Consolas, monospace;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+  user-select: none;
+}
+
+input,
+textarea,
+pre,
+.selectable {
+  user-select: text;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar) transparent;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--accent) 30%, transparent);
+}
+
+.ansi-out {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+@keyframes pulse-dot {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+.pulse-dot {
+  animation: pulse-dot 1.4s ease-in-out infinite;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px) scale(0.99);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.fade-in {
+  animation: fade-in 140ms ease-out;
+}
