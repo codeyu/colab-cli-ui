@@ -1,16 +1,44 @@
-<p align="center"><img src="resources/icon.svg" width="96" alt="Colab CLI UI"></p>
+<p align="center">
+  <img src="resources/icon.svg" width="128" alt="Colab CLI UI 图标">
+</p>
 
-# Colab CLI UI
+<h1 align="center">Colab CLI UI</h1>
 
-[google-colab-cli](https://github.com/googlecolab/google-colab-cli)（`colab` 命令）的桌面图形客户端：申请 CPU / GPU / TPU 运行时、执行代码、管理文件、从 HuggingFace 选模型，用完一键释放。基于 [MyGo](https://github.com/egoist/mygo)（Go + 系统 WebView）构建，界面风格参考 t3code，功能组织参考 EasyColab。
+<p align="center">
+  <a href="https://github.com/googlecolab/google-colab-cli">google-colab-cli</a> 的桌面客户端：申请 CPU / GPU / TPU 运行时、执行代码、管理文件、从 HuggingFace 选模型，用完一键释放。
+</p>
 
-> 非 Google 官方软件。目前只在 Windows 11 上构建和测试过；google-colab-cli 官方只支持 Linux 和 macOS，但在 Windows 上实测可用。
+<p align="center">
+  <a href="#安装与首次使用">下载与安装</a> |
+  <a href="#功能">功能</a> |
+  <a href="#数据与凭据">数据与凭据</a> |
+  <a href="#开发">开发</a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/codeyu/colab-cli-ui/releases"><img alt="release" src="https://img.shields.io/github/v/release/codeyu/colab-cli-ui?logo=github&label=release&color=orange"></a>
+  <a href="https://github.com/codeyu/colab-cli-ui/actions/workflows/release.yml"><img alt="release build" src="https://img.shields.io/github/actions/workflow/status/codeyu/colab-cli-ui/release.yml?logo=githubactions&logoColor=white&label=release%20build"></a>
+  <a href="https://github.com/egoist/mygo"><img alt="built with Go + MyGo" src="https://img.shields.io/badge/built%20with-Go%20%2B%20MyGo-00ADD8?logo=go&logoColor=white"></a>
+  <a href="LICENSE"><img alt="license MIT" src="https://img.shields.io/badge/license-MIT-green"></a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/codeyu/colab-cli-ui/releases/latest"><img alt="Download for Windows x64" src="https://img.shields.io/badge/Download-Windows%20x64-0078D6?style=for-the-badge&logo=data:image/svg%2bxml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PHBhdGggZmlsbD0id2hpdGUiIGQ9Ik0yIDJoOS41djkuNUgyek0xMi41IDJIMjJ2OS41aC05LjV6TTIgMTIuNWg5LjVWMjJIMnpNMTIuNSAxMi41SDIyVjIyaC05LjV6Ii8+PC9zdmc+"></a>
+  <a href="https://github.com/codeyu/colab-cli-ui/releases/latest"><img alt="Download for macOS Apple Silicon" src="https://img.shields.io/badge/Download-macOS%20Apple%20Silicon-000000?style=for-the-badge&logo=apple&logoColor=white"></a>
+  <a href="https://github.com/codeyu/colab-cli-ui/releases/latest"><img alt="Download for Linux x64" src="https://img.shields.io/badge/Download-Linux%20x64-FCC624?style=for-the-badge&logo=linux&logoColor=black"></a>
+</p>
+
+<p align="center">
+  <img src="docs/screenshot.png" width="900" alt="Colab CLI UI 概览页">
+</p>
+
+> 非 Google 官方软件。基于 [MyGo](https://github.com/egoist/mygo)（Go + 系统 WebView）构建，界面风格参考 t3code，功能组织参考 EasyColab。目前只在 Windows 11 上实测过；google-colab-cli 官方只支持 Linux 和 macOS，但在 Windows 上实测可用。
 
 ## 安装与首次使用
 
-1. 构建安装包（见下文「开发」），运行 `build/windows-amd64/colab-cli-ui-setup-<版本>-amd64.exe`；也可以直接运行同目录下的 `Colab CLI UI.exe`。需要 WebView2 运行时（Windows 11 自带）。
+1. 在 [Releases](https://github.com/codeyu/colab-cli-ui/releases/latest) 下载对应系统的安装包：Windows 选 `-setup-…-amd64.exe`（ARM 设备选 `-arm64.exe`），macOS 选 `.dmg`，Linux 选 `.deb` / `.rpm`，或 `.tar.gz` 配合 `install.sh`。安装包没有代码签名，首次打开的系统提示怎么处理，见 Release 说明。
 2. 第一次打开会显示三步引导，已完成的步骤会自动跳过：
-   1. **安装 uv**：给出官方安装命令，复制到 PowerShell 运行，再点「重新检测」。
+   1. **安装 uv**：给出官方安装命令，复制到终端运行，再点「重新检测」。
    2. **安装 Colab CLI**：点「安装」，软件执行 `uv tool install google-colab-cli`。
    3. **登录 Google**：点「登录 Google」，在浏览器里同意授权，把页面上的授权码粘贴回软件。也可以改用 gcloud 的 ADC。
 3. 进入主界面后，点「新建会话」申请虚拟机。**GPU / TPU 按小时消耗计算单元，用完记得「释放」。**
