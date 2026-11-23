@@ -1,9 +1,12 @@
 import { defineConfig } from "mygo-cli";
+// The version lives in package.json, where the release workflow checks it
+// against the tag.
+import pkg from "./package.json" with { type: "json" };
 
 export default defineConfig({
   name: "Colab CLI UI",
   identifier: "dev.colabcliui.app",
-  version: "0.1.0",
+  version: pkg.version,
   // `mygo dev` runs devCommand and loads devUrl; `mygo build` runs
   // buildCommand and embeds frontendDist into the app.
   devUrl: "http://localhost:5173",

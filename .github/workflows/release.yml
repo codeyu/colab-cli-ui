@@ -1,0 +1,93 @@
+# Pushing a tag v<version> builds the app for macOS, Windows and Linux and
+# publishes them as a GitHub release. The version in package.json must match
+# the tag:
+#
+#   git tag v0.2.0 && git push origin v0.2.0
+#
+# After the MyGo guide (docs/github-actions.md). The app has no auto-updates
+# (updates.github), so the builds run without -upload and their installers are
+# attached to the release with gh. They are not code-signed.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write # the release, and the uploads to it
+
+jobs:
+  draft-release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Check the version
+        run: |
+          want="v$(jq -r .version package.json)"
+          if [ "$GITHUB_REF_NAME" != "$want" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match package.json ($want)."
+            exit 1
+          fi
+      - name: Create the draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if ! gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" \
+              --draft --verify-tag --title "Colab CLI UI $GITHUB_REF_NAME" \
+              --notes-file .github/release-notes.md --generate-notes
+          fi
+
+  build:
+    needs: draft-release
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # macOS needs a macOS runner for the disk images; Go cross-compiles
+          # the rest, so Ubuntu builds Windows as well as Linux.
+          - { name: macOS, os: macos-latest, platform: "darwin/arm64,darwin/amd64" }
+          - { name: Windows, os: ubuntu-latest, platform: "windows/amd64,windows/arm64" }
+          - { name: Linux, os: ubuntu-latest, platform: "linux/amd64,linux/arm64" }
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+      - name: Install NSIS, for the Windows installers
+        if: matrix.name == 'Windows'
+        run: sudo apt-get update && sudo apt-get install -y nsis
+      - name: Build
+        run: bun run build -- -platform "${{ matrix.platform }}"
+      - name: Upload to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          shopt -s nullglob
+          files=(build/*/*.dmg build/*/*-setup-*.exe build/*/*.deb build/*/*.rpm build/*/*.tar.gz)
+          # install.sh is the same for every architecture: publish one.
+          if [ "${{ matrix.name }}" = Linux ]; then files+=(build/linux-amd64/install.sh); fi
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "::error::The build made no installers."
+            exit 1
+          fi
+          printf '%s\n' "${files[@]}"
+          gh release upload "$GITHUB_REF_NAME" "${files[@]}" --clobber --repo "$GITHUB_REPOSITORY"
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          flags=(--draft=false)
+          # A tag such as v0.2.0-beta.1 is a prerelease.
+          if [[ "$GITHUB_REF_NAME" == *-* ]]; then flags+=(--prerelease); fi
+          gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" "${flags[@]}"
