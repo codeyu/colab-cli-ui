@@ -44,10 +44,14 @@ export function SessionView({
   session,
   onStopped,
   onChanged,
+  sessions,
+  onGo,
 }: {
   session: Session;
   onStopped: () => void;
-  onChanged: () => void;
+  onChanged: () => void | Promise<void>;
+  sessions: Session[];
+  onGo: (name: string) => void;
 }) {
   const name = session.name;
   const [tab, setTab] = useState<Tab>(lastTab[name] ?? "console");
@@ -167,7 +171,23 @@ export function SessionView({
         {tab === "files" && <FilesTab session={name} />}
         {tab === "packages" && <PackagesTab session={name} />}
         {tab === "monitor" && <MonitorTab session={name} />}
-        {tab === "history" && <HistoryPanel session={name} />}
+        {tab === "history" && (
+          <HistoryPanel
+            session={name}
+            host={{
+              targets: sessions,
+              onGo: (target) => {
+                if (target === name) {
+                  setTab("console");
+                  lastTab[name] = "console";
+                } else onGo(target);
+              },
+              onSessionsChanged: async () => {
+                await onChanged();
+              },
+            }}
+          />
+        )}
       </div>
 
       <Dialog

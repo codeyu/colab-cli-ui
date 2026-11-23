@@ -54,21 +54,27 @@ export function App() {
   const [activityOpen, setActivityOpen] = useState(false);
   const [refreshSeconds, setRefreshSeconds] = useState(30);
   const activity = useStore(activityStore);
-  const loadingRef = useRef(false);
 
-  const loadSessions = useCallback(async () => {
-    if (loadingRef.current) return;
-    loadingRef.current = true;
+  // A refresh asked for while one runs joins it. After a change (a session
+  // created or stopped) pass fresh, which waits for it and loads again, since
+  // the running one may predate the change.
+  const inflight = useRef<Promise<void> | null>(null);
+  const loadSessions = useCallback((fresh = false): Promise<void> => {
+    if (inflight.current) return fresh ? inflight.current.then(() => loadSessions()) : inflight.current;
     setSessionsLoading(true);
-    try {
-      setSessions(await Colab.sessions());
-      setSessionsError(null);
-    } catch (e) {
-      setSessionsError(errorMessage(e));
-    } finally {
-      loadingRef.current = false;
-      setSessionsLoading(false);
-    }
+    const p = (async () => {
+      try {
+        setSessions(await Colab.sessions());
+        setSessionsError(null);
+      } catch (e) {
+        setSessionsError(errorMessage(e));
+      } finally {
+        inflight.current = null;
+        setSessionsLoading(false);
+      }
+    })();
+    inflight.current = p;
+    return p;
   }, []);
 
   const loadUsage = useCallback(async () => {
@@ -161,7 +167,15 @@ export function App() {
   } else if (view.kind === "models") {
     main = <ModelsTab session={null} />;
   } else if (view.kind === "history") {
-    main = <HistoryView />;
+    main = (
+      <HistoryView
+        host={{
+          targets: sessions ?? [],
+          onGo: (name) => setView({ kind: "session", name }),
+          onSessionsChanged: () => loadSessions(true),
+        }}
+      />
+    );
   } else if (view.kind === "session") {
     main = current ? (
       <SessionView
@@ -172,7 +186,9 @@ export function App() {
           void loadSessions();
           void loadUsage();
         }}
-        onChanged={loadSessions}
+        onChanged={() => loadSessions(true)}
+        sessions={sessions ?? []}
+        onGo={(name) => setView({ kind: "session", name })}
       />
     ) : sessions === null || sessionsLoading ? (
       <div className="flex h-full items-center justify-center">
@@ -212,7 +228,7 @@ export function App() {
         sessions={sessions}
         sessionsLoading={sessionsLoading}
         sessionsError={sessionsError}
-        onRefresh={loadSessions}
+        onRefresh={() => loadSessions()}
         onNew={() => setNewOpen(true)}
         usage={usage}
         usageLoading={usageLoading}
@@ -234,7 +250,7 @@ export function App() {
         usage={usage}
         onClose={() => setNewOpen(false)}
         onCreated={async (name) => {
-          await loadSessions();
+          await loadSessions(true);
           void loadUsage();
           setView({ kind: "session", name });
         }}

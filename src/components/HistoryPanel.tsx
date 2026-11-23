@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
-import { ChevronDown, ChevronRight, FileDown, History, RefreshCw } from "lucide-react";
-import { Colab, errorMessage, type HistoryEvent } from "../lib/api";
+import { ChevronDown, ChevronRight, FileDown, History, Play, RefreshCw, ScrollText } from "lucide-react";
+import { Colab, errorMessage, type HistoryEvent, type Session } from "../lib/api";
+import { ReplayDialog } from "./ReplayDialog";
+import { SaveScriptDialog } from "./StartupScripts";
+import { needsDrive, replayable } from "../lib/startup";
 import { cx, dateTime } from "../lib/format";
 import { toast } from "../lib/store";
 import { Badge, Button, Empty, IconButton, Spinner } from "./ui";
@@ -15,7 +18,15 @@ const TYPE_LABEL: Record<string, { label: string; tone: "neutral" | "accent" | "
   input_reply: { label: "回复", tone: "neutral" },
 };
 
-export function HistoryPanel({ session, compact }: { session: string; compact?: boolean }) {
+export interface ReplayHost {
+  targets: Session[];
+  onGo: (target: string) => void;
+  onSessionsChanged: () => Promise<void>;
+}
+
+export function HistoryPanel({ session, compact, host }: { session: string; compact?: boolean; host: ReplayHost }) {
+  const [replaySteps, setReplaySteps] = useState<HistoryEvent[] | null>(null);
+  const [saving, setSaving] = useState(false);
   const [events, setEvents] = useState<HistoryEvent[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -53,6 +64,10 @@ export function HistoryPanel({ session, compact }: { session: string; compact?: 
     }
   }
 
+  const steps = (events ?? []).filter(replayable);
+  const created = events?.find((e) => e.type === "session_created");
+  const origin = { accelerator: created?.fields?.accelerator ?? "NONE", highMem: created?.fields?.machine_shape === "HIGH_RAM" };
+
   const shown = (events ?? []).map((e, i) => ({ e, i })).filter(({ e }) => !filter || e.type === filter).reverse();
   const types = [...new Set((events ?? []).map((e) => e.type))];
 
@@ -73,6 +88,9 @@ export function HistoryPanel({ session, compact }: { session: string; compact?: 
         <IconButton label="刷新" onClick={load} disabled={loading}>
           {loading ? <Spinner /> : <RefreshCw className="size-3.5" />}
         </IconButton>
+        <Button size="sm" icon={<ScrollText className="size-3.5" />} onClick={() => setSaving(true)} disabled={steps.length === 0}>
+          保存为启动脚本
+        </Button>
         <Button size="sm" loading={exporting} icon={<FileDown className="size-3.5" />} onClick={exportLog} disabled={!events?.length}>
           导出（ipynb / md / txt / jsonl）
         </Button>
@@ -95,7 +113,7 @@ export function HistoryPanel({ session, compact }: { session: string; compact?: 
             const expandable = !!(e.code || e.output);
             const isOpen = open.has(i);
             return (
-              <div key={i} className="rounded-lg hover:bg-muted/50">
+              <div key={i} className="group rounded-lg hover:bg-muted/50">
                 <button
                   className="flex w-full items-center gap-2.5 px-2 py-1.5 text-left"
                   onClick={() =>
@@ -116,6 +134,19 @@ export function HistoryPanel({ session, compact }: { session: string; compact?: 
                     {t.label}
                   </Badge>
                   <span className="min-w-0 flex-1 truncate font-mono text-xs">{e.summary}</span>
+                  {replayable(e) && (
+                    <span
+                      role="button"
+                      title="重新执行"
+                      onClick={(ev) => {
+                        ev.stopPropagation();
+                        setReplaySteps([e]);
+                      }}
+                      className="rounded p-1 text-muted-foreground opacity-0 group-hover:opacity-100 hover:bg-muted hover:text-foreground"
+                    >
+                      <Play className="size-3" />
+                    </span>
+                  )}
                 </button>
                 {isOpen && (
                   <div className="mx-2 mb-2 ml-9 overflow-hidden rounded-lg border border-border">
@@ -128,6 +159,18 @@ export function HistoryPanel({ session, compact }: { session: string; compact?: 
           })}
         </div>
       </div>
+      <SaveScriptDialog open={saving} onClose={() => setSaving(false)} source={session} steps={steps} drive={needsDrive(events ?? [])} />
+      <ReplayDialog
+        open={replaySteps !== null}
+        onClose={() => setReplaySteps(null)}
+        source={session}
+        steps={replaySteps ?? []}
+        drive={needsDrive(events ?? [])}
+        origin={origin}
+        targets={host.targets}
+        onGo={host.onGo}
+        onSessionsChanged={host.onSessionsChanged}
+      />
     </div>
   );
 }
@@ -146,7 +189,7 @@ function FilterChip({ active, onClick, children }: { active: boolean; onClick: (
   );
 }
 
-export function HistoryView() {
+export function HistoryView({ host }: { host: ReplayHost }) {
   const [names, setNames] = useState<string[] | null>(null);
   const [sel, setSel] = useState<string | null>(null);
   useEffect(() => {
@@ -173,7 +216,7 @@ export function HistoryView() {
           </button>
         ))}
       </div>
-      <div className="min-w-0 flex-1">{sel ? <HistoryPanel session={sel} compact /> : <Empty icon={<History className="size-5" />} title="选择一个会话" />}</div>
+      <div className="min-w-0 flex-1">{sel ? <HistoryPanel session={sel} compact host={host} /> : <Empty icon={<History className="size-5" />} title="选择一个会话" />}</div>
     </div>
   );
 }

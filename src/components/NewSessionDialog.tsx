@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Cpu, Server, Sparkles } from "lucide-react";
-import { Colab, errorMessage, isAbort, streamCall, type Chunk, type Usage } from "../lib/api";
+import { Colab, errorMessage, isAbort, streamCall, type Chunk, type StartupScript, type Usage } from "../lib/api";
+import { runSteps } from "../lib/startup";
 import { ACCELERATORS, eligibilityOf } from "../lib/accelerators";
 import { cx, randomName } from "../lib/format";
 import { toast } from "../lib/store";
@@ -24,6 +25,8 @@ export function NewSessionDialog({
   const [busy, setBusy] = useState(false);
   const [chunks, setChunks] = useState<Chunk[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [scripts, setScripts] = useState<StartupScript[]>([]);
+  const [scriptId, setScriptId] = useState("");
   const abort = useRef<AbortController | null>(null);
   const info = ACCELERATORS.find((a) => a.id === acc)!;
 
@@ -32,6 +35,9 @@ export function NewSessionDialog({
       setName(randomName());
       setChunks([]);
       setError(null);
+      Colab.listScripts()
+        .then(setScripts)
+        .catch(() => setScripts([]));
     }
   }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -51,6 +57,8 @@ export function NewSessionDialog({
       toast("success", `会话 ${name} 已就绪`, `${info.label}${highMem && info.highMem ? " · 高内存" : ""}`);
       onCreated(name);
       onClose();
+      const script = scripts.find((s) => s.id === scriptId);
+      if (script) void runSteps(name, script.steps.map((s) => s.code), { label: script.name, drive: script.drive });
     } catch (e) {
       setError(isAbort(e) ? "已取消申请" : errorMessage(e));
     } finally {
@@ -134,6 +142,19 @@ export function NewSessionDialog({
             {info.note}
           </div>
         </div>
+
+        {scripts.length > 0 && (
+          <Field label="启动脚本" hint="会话就绪后自动执行，进度在控制台里">
+            <select className={inputClass} value={scriptId} onChange={(e) => setScriptId(e.target.value)} disabled={busy}>
+              <option value="">无</option>
+              {scripts.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}（{s.steps.length} 步{s.drive ? " · Drive" : ""}）
+                </option>
+              ))}
+            </select>
+          </Field>
+        )}
 
         <div className={cx(!info.highMem && "pointer-events-none opacity-50")}>
           <Toggle checked={highMem && info.highMem} onChange={setHighMem} label="高内存机型（--high-mem，需要 Pro / Pro+）" />

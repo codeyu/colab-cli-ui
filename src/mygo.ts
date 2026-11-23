@@ -193,6 +193,19 @@ export interface Settings {
   hfEndpoint: string;
 }
 
+/**
+ * StartupScript is a list of code steps run on a new session right after it
+ * is created, e.g. installing packages and loading a model.
+ */
+export interface StartupScript {
+  id: string;
+  name: string;
+  steps: Step[];
+  /** Drive mounts Google Drive before the steps run. */
+  drive: boolean;
+  updated: string;
+}
+
 /** Stats is a snapshot of the VM's resources. */
 export interface Stats {
   /** percent */
@@ -206,6 +219,11 @@ export interface Stats {
   gpus: GPU[];
   python: string;
   time: string;
+}
+
+/** Step is one piece of Python code of a startup script. */
+export interface Step {
+  code: string;
 }
 
 /** Usage is the account's compute-unit balance and what it may allocate. */
@@ -228,6 +246,8 @@ export interface Usage {
 export const Colab = {
   /** CreateSession allocates a new runtime, streaming the CLI's progress. */
   createSession: bind<[NewSessionOptions, Channel<Chunk>], void>("Colab.CreateSession", (opts: NewSessionOptions, out: Channel<Chunk>) => [opts, out]),
+  /** DeleteScript removes a startup script. */
+  deleteScript: bind<[string], void>("Colab.DeleteScript", (id: string) => [id]),
   /**
    * Download asks where to save a remote file and downloads it there. It
    * returns the local path, or "" when canceled.
@@ -280,6 +300,8 @@ export const Colab = {
    * as "content" for /content.
    */
   listFiles: bind<[string, string], FileEntry[]>("Colab.ListFiles", (name: string, dir: string) => [name, dir]),
+  /** ListScripts returns the startup scripts, most recently changed first. */
+  listScripts: bind<[], StartupScript[]>("Colab.ListScripts", () => []),
   /** OpenExternal opens a web page in the browser. */
   openExternal: bind<[string], void>("Colab.OpenExternal", (url: string) => [url]),
   /** OpenInBrowser opens the runtime in Colab's web UI. */
@@ -305,6 +327,8 @@ export const Colab = {
    * VM afterwards (unless Keep).
    */
   runScript: bind<[RunOptions, Channel<Chunk>], void>("Colab.RunScript", (opts: RunOptions, out: Channel<Chunk>) => [opts, out]),
+  /** SaveScript creates a startup script, or replaces the one with its ID. */
+  saveScript: bind<[StartupScript], StartupScript>("Colab.SaveScript", (s: StartupScript) => [s]),
   /** SaveSettings stores the app's preferences. */
   saveSettings: bind<[Settings], void>("Colab.SaveSettings", (s: Settings) => [s]),
   /** SessionURL returns the address that opens the runtime in Colab's web UI. */

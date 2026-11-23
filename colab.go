@@ -832,6 +832,11 @@ func toHistoryEvent(raw map[string]any) HistoryEvent {
 		e.Summary = strings.TrimSpace(str("op") + " " + firstNonEmpty(str("path"), str("remote"), str("local")))
 	case "automation":
 		e.Summary = str("op")
+		// An install is code like any other and can run again; drivemount
+		// needs a person to sign in, so the page only flags it.
+		if str("op") == "install" {
+			e.Code = str("code")
+		}
 	case "session_created":
 		e.Summary = "创建会话 " + firstNonEmpty(str("accelerator"), "") + " " + str("machine_shape")
 	case "session_terminated":

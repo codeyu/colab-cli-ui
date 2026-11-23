@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { BookOpen, CheckCircle2, ExternalLink, FolderSearch, Save, XCircle } from "lucide-react";
 import { Colab, errorMessage, type Account, type Environment, type HFTokenStatus, type Settings } from "../lib/api";
 import { toast } from "../lib/store";
+import { ScriptsCard } from "./StartupScripts";
 import { Button, Card, Field, Segmented, Spinner, inputClass } from "./ui";
 
 function HFCard({
@@ -176,6 +177,8 @@ export function SettingsView({
         </Card>
 
         <HFCard settings={s} onChange={setS} onSave={save} saving={saving} />
+
+        <ScriptsCard />
 
         <Card className="mt-4 p-5">
           <div className="flex items-center justify-between">
