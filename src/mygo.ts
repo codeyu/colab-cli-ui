@@ -25,6 +25,18 @@ export interface ActivityEntry {
   output?: string;
 }
 
+/** AuthState says whether the CLI has usable credentials. */
+export interface AuthState {
+  loggedIn: boolean;
+  account: Account;
+  /**
+   * NeedsLogin is true when the CLI asked for a sign-in (oauth2) or found
+   * no Application Default Credentials (adc).
+   */
+  needsLogin: boolean;
+  error?: string;
+}
+
 /** Chunk is a piece of output streamed from a running colab command. */
 export interface Chunk {
   /** Stream is "stdout", "stderr", "image" or "info". */
@@ -193,6 +205,13 @@ export interface Settings {
   hfEndpoint: string;
 }
 
+/** SetupStatus is what the first-run guide checks. */
+export interface SetupStatus {
+  /** "" when uv is not found */
+  uvPath: string;
+  env: Environment;
+}
+
 /**
  * StartupScript is a list of code steps run on a new session right after it
  * is created, e.g. installing packages and loading a model.
@@ -244,6 +263,11 @@ export interface Usage {
 
 /** Colab drives the google-colab-cli `colab` command for the page. */
 export const Colab = {
+  /**
+   * AuthStatus checks the credentials with `colab whoami`. It never starts a
+   * sign-in: with no input the CLI's prompt fails at once.
+   */
+  authStatus: bind<[], AuthState>("Colab.AuthStatus", () => []),
   /** CreateSession allocates a new runtime, streaming the CLI's progress. */
   createSession: bind<[NewSessionOptions, Channel<Chunk>], void>("Colab.CreateSession", (opts: NewSessionOptions, out: Channel<Chunk>) => [opts, out]),
   /** DeleteScript removes a startup script. */
@@ -296,12 +320,30 @@ export const Colab = {
   /** Install installs Python packages on the VM, with uv when it can. */
   install: bind<[string, string[], string, Channel<Chunk>], void>("Colab.Install", (name: string, packages: string[], requirements: string, out: Channel<Chunk>) => [name, packages, requirements, out]),
   /**
+   * InstallCLI installs google-colab-cli with `uv tool install`, streaming
+   * uv's output.
+   */
+  installCLI: bind<[Channel<Chunk>], void>("Colab.InstallCLI", (out: Channel<Chunk>) => [out]),
+  /**
    * ListFiles lists a directory on the VM. Paths are relative to the VM's root,
    * as "content" for /content.
    */
   listFiles: bind<[string, string], FileEntry[]>("Colab.ListFiles", (name: string, dir: string) => [name, dir]),
   /** ListScripts returns the startup scripts, most recently changed first. */
   listScripts: bind<[], StartupScript[]>("Colab.ListScripts", () => []),
+  /** LoginCancel abandons a sign-in in progress. */
+  loginCancel: bind<[], void>("Colab.LoginCancel", () => []),
+  /**
+   * LoginFinish passes the authorization code Google showed to the CLI and
+   * returns the signed-in account.
+   */
+  loginFinish: bind<[string], AuthState>("Colab.LoginFinish", (code: string) => [code]),
+  /**
+   * LoginStart starts the CLI's sign-in and returns the Google address to open.
+   * When the CLI turns out to be signed in already it returns "" and nothing
+   * more is needed.
+   */
+  loginStart: bind<[], string>("Colab.LoginStart", () => []),
   /** OpenExternal opens a web page in the browser. */
   openExternal: bind<[string], void>("Colab.OpenExternal", (url: string) => [url]),
   /** OpenInBrowser opens the runtime in Colab's web UI. */
@@ -340,6 +382,8 @@ export const Colab = {
   sessions: bind<[], Session[]>("Colab.Sessions", () => []),
   /** SetHFToken stores a token in the system's credential store; "" removes it. */
   setHFToken: bind<[string], HFTokenStatus>("Colab.SetHFToken", (token: string) => [token]),
+  /** Setup reports whether uv and colab are installed. */
+  setup: bind<[], SetupStatus>("Colab.Setup", () => []),
   /** ShowInFolder reveals a local file in the file manager. */
   showInFolder: bind<[string], void>("Colab.ShowInFolder", (p: string) => [p]),
   /**

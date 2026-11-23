@@ -75,22 +75,7 @@ func (c *Colab) Whoami(ctx context.Context) (Account, error) {
 	if err != nil {
 		return Account{}, err
 	}
-	var a Account
-	for _, line := range strings.Split(stripANSI(out), "\n") {
-		line = strings.TrimSpace(line)
-		k, v, ok := strings.Cut(line, ":")
-		switch {
-		case strings.HasPrefix(line, "- "):
-			a.Scopes = append(a.Scopes, strings.TrimPrefix(line, "- "))
-		case ok && k == "Auth provider":
-			a.Provider = strings.TrimSpace(v)
-		case ok && k == "Email":
-			a.Email = strings.TrimSpace(v)
-		case ok && k == "Expires in":
-			a.ExpiresIn = strings.TrimSpace(v)
-		}
-	}
-	return a, nil
+	return parseWhoami(out), nil
 }
 
 // ---------------------------------------------------------------------------

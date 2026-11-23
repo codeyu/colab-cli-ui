@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { AlertTriangle, Settings as SettingsIcon } from "lucide-react";
-import { Colab, errorMessage, events, type Account, type Environment, type Session, type Usage } from "./lib/api";
+import { AlertTriangle } from "lucide-react";
+import { Colab, errorMessage, events, type Account, type AuthState, type Environment, type SetupStatus, type Session, type Usage } from "./lib/api";
 import { activityStore, recordActivity, toast, useStore } from "./lib/store";
 import { ActivityDrawer } from "./components/ActivityDrawer";
 import { HistoryView } from "./components/HistoryPanel";
 import { HomeView } from "./components/HomeView";
 import { ModelsTab } from "./components/ModelsTab";
+import { Onboarding } from "./components/Onboarding";
 import { NewSessionDialog } from "./components/NewSessionDialog";
 import { SessionView } from "./components/SessionView";
 import { SettingsView } from "./components/SettingsView";
@@ -43,6 +44,8 @@ export function App() {
   const [theme, setTheme] = useTheme();
   const [view, setView] = useState<View>({ kind: "home" });
   const [env, setEnv] = useState<Environment | null>(null);
+  const [setup, setSetup] = useState<SetupStatus | null>(null);
+  const [auth, setAuth] = useState<AuthState | null>(null);
   const [account, setAccount] = useState<Account | null>(null);
   const [accountError, setAccountError] = useState<string | null>(null);
   const [sessions, setSessions] = useState<Session[] | null>(null);
@@ -98,17 +101,28 @@ export function App() {
     }
   }, []);
 
+  // Checks the CLI, then the sign-in, and loads data only once both are
+  // there: before sign-in every call would fail.
   const boot = useCallback(async () => {
-    setEnv(null);
-    const [e, s] = await Promise.all([Colab.environment(), Colab.getSettings()]);
-    setEnv(e);
+    const [st, s] = await Promise.all([Colab.setup(), Colab.getSettings()]);
+    setSetup(st);
+    setEnv(st.env);
     setRefreshSeconds(s.refreshSeconds);
-    if (e.ok) {
+    if (!st.env.ok) {
+      setAuth(null);
+      return;
+    }
+    const a = await Colab.authStatus();
+    setAuth(a);
+    if (a.loggedIn) {
+      setAccount(a.account);
+      setAccountError(null);
       void loadSessions();
       void loadUsage();
-      void loadAccount();
     }
-  }, [loadSessions, loadUsage, loadAccount]);
+  }, [loadSessions, loadUsage]);
+
+  const ready = !!env?.ok && !!auth?.loggedIn;
 
   useEffect(() => {
     const off = events.activity.on(recordActivity);
@@ -117,7 +131,7 @@ export function App() {
   }, [boot]);
 
   useEffect(() => {
-    if (!env?.ok || refreshSeconds <= 0) return;
+    if (!ready || refreshSeconds <= 0) return;
     const t = setInterval(() => {
       if (document.visibilityState === "visible") void loadSessions();
     }, refreshSeconds * 1000);
@@ -126,11 +140,11 @@ export function App() {
       clearInterval(t);
       clearInterval(u);
     };
-  }, [env, refreshSeconds, loadSessions, loadUsage]);
+  }, [ready, refreshSeconds, loadSessions, loadUsage]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "n" && env?.ok) {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "n" && ready) {
         e.preventDefault();
         setNewOpen(true);
       }
@@ -141,28 +155,30 @@ export function App() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [env]);
+  }, [ready]);
+
+  if (!setup || (setup.env.ok && auth === null && !ready)) {
+    return (
+      <div className="flex h-full items-center justify-center gap-2 text-xs text-muted-foreground">
+        <Spinner /> 正在检查环境…
+        <Toasts />
+      </div>
+    );
+  }
+  if (!ready) {
+    return (
+      <>
+        <Onboarding setup={setup} auth={auth} onRecheck={boot} />
+        <Toasts />
+      </>
+    );
+  }
 
   const current = view.kind === "session" ? sessions?.find((s) => s.name === view.name) : undefined;
   const runningCount = activity.filter((a) => a.running).length;
 
   let main: React.ReactNode;
-  if (env && !env.ok && view.kind !== "settings") {
-    main = (
-      <Empty icon={<AlertTriangle className="size-5 text-warning" />} title="没有可用的 Colab CLI">
-        <div className="text-danger">{env.error}</div>
-        <pre className="selectable mt-3 rounded-lg bg-muted px-3 py-2 text-left font-mono text-xs text-foreground">uv tool install google-colab-cli</pre>
-        <div className="mt-4 flex justify-center gap-2">
-          <Button size="sm" onClick={boot}>
-            重新检测
-          </Button>
-          <Button size="sm" icon={<SettingsIcon className="size-3.5" />} onClick={() => setView({ kind: "settings" })}>
-            指定路径
-          </Button>
-        </div>
-      </Empty>
-    );
-  } else if (view.kind === "settings") {
+  if (view.kind === "settings") {
     main = <SettingsView env={env} account={account} accountError={accountError} onSaved={boot} onCheckAccount={loadAccount} />;
   } else if (view.kind === "models") {
     main = <ModelsTab session={null} />;

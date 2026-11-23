@@ -206,9 +206,17 @@ func (c *Colab) finish(entry *ActivityEntry, out string, err error) {
 // stream runs colab and sends what it prints to out as it arrives. Lines the
 // CLI prints for saved images become image chunks.
 func (c *Colab) stream(ctx context.Context, stdin string, out *mygo.Channel[Chunk], args ...string) error {
+	return c.streamCmd(ctx, stdin, out, func(ctx context.Context) (*exec.Cmd, string, error) {
+		return c.command(ctx, args...)
+	})
+}
+
+// streamCmd is stream for any program: build makes the command, bound to the
+// context it is given, and the text to show for it.
+func (c *Colab) streamCmd(ctx context.Context, stdin string, out *mygo.Channel[Chunk], build func(context.Context) (*exec.Cmd, string, error)) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	cmd, display, err := c.command(ctx, args...)
+	cmd, display, err := build(ctx)
 	if err != nil {
 		return err
 	}
@@ -382,10 +390,14 @@ func resolveColab(configured string) (string, error) {
 		return p, nil
 	}
 	home, _ := os.UserHomeDir()
-	for _, p := range []string{
+	candidates := []string{
 		filepath.Join(home, ".local", "bin", "colab.exe"),
 		filepath.Join(home, ".local", "bin", "colab"),
-	} {
+	}
+	if bin := uvToolBin(); bin != "" {
+		candidates = append(candidates, filepath.Join(bin, exeName("colab")))
+	}
+	for _, p := range candidates {
 		if _, err := os.Stat(p); err == nil {
 			return p, nil
 		}
