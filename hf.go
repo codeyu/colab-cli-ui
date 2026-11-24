@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"path"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -248,84 +247,15 @@ type HFDownloadOptions struct {
 	TotalBytes int64  `json:"totalBytes"`
 }
 
-// The token reaches the VM as an uploaded file, which the script moves into
-// huggingface_hub's token path: code sent with colab exec is written to the
-// session history, an upload only by its path.
+// The token reaches the VM as an uploaded file, which the download moves
+// into huggingface_hub's token path: code sent with colab exec is written to
+// the session history, an upload only by its path.
 const hfTokenUpload = "content/.colab_ui_hf_token"
-
-const hfDownloadScript = `import os as _os, time as _time, threading as _th, shutil as _sh
-_repo, _files, _dest, _total = %s, %s, %s, %d
-_tok = "/` + hfTokenUpload + `"
-if _os.path.exists(_tok):
-    from huggingface_hub import constants as _hc
-    _os.makedirs(_os.path.dirname(_hc.HF_TOKEN_PATH), exist_ok=True)
-    _sh.move(_tok, _hc.HF_TOKEN_PATH)
-    _os.chmod(_hc.HF_TOKEN_PATH, 0o600)
-_os.environ["HF_HUB_DISABLE_PROGRESS_BARS"] = "1"
-from huggingface_hub import hf_hub_download as _dl
-from huggingface_hub.utils import disable_progress_bars as _npb
-_npb()
-_os.makedirs(_dest, exist_ok=True)
-def _size():
-    _n = 0
-    for _r, _d, _fs in _os.walk(_dest):
-        for _f in _fs:
-            try: _n += _os.path.getsize(_os.path.join(_r, _f))
-            except OSError: pass
-    return _n
-_base, _stop, _t0 = _size(), _th.Event(), _time.time()
-def _report():
-    while not _stop.wait(2):
-        _n = max(0, _size() - _base); _s = _n / max(1e-6, _time.time() - _t0)
-        _p = f" {100*_n/_total:.0f}%%" if _total else ""
-        print(f"\r  {_n/1e9:.2f} / {_total/1e9:.2f} GB{_p} · {_s/1e6:.1f} MB/s", end="", flush=True)
-_rt = _th.Thread(target=_report, daemon=True); _rt.start()
-try:
-    for _i, _f in enumerate(_files, 1):
-        print(f"\n[{_i}/{len(_files)}] {_f}", flush=True)
-        _dl(_repo, _f, local_dir=_dest)
-finally:
-    _stop.set(); _rt.join()
-print(f"\n✓ {len(_files)} 个文件，用时 {_time.time()-_t0:.0f}s → {_dest}", flush=True)
-del _os, _time, _th, _sh, _repo, _files, _dest, _total, _tok, _dl, _npb, _size, _base, _stop, _t0, _report, _rt
-`
 
 func pyLiteral(v any) string {
 	// JSON strings and lists are valid Python literals.
 	b, _ := json.Marshal(v)
 	return string(b)
-}
-
-// HFDownload downloads files of a model onto the session's VM with
-// huggingface_hub, streaming progress.
-func (c *Colab) HFDownload(ctx context.Context, name string, opts HFDownloadOptions, out *mygo.Channel[Chunk]) error {
-	if err := checkName(name); err != nil {
-		return err
-	}
-	if !hfRepoID.MatchString(opts.Repo) {
-		return fmt.Errorf("模型 ID 无效：%q", opts.Repo)
-	}
-	if len(opts.Files) == 0 {
-		return errors.New("没有选择文件")
-	}
-	for _, f := range opts.Files {
-		if !hfFileName.MatchString(f) || strings.HasPrefix(f, "/") || strings.Contains(f, "..") {
-			return fmt.Errorf("文件名无效：%q", f)
-		}
-	}
-	dest := path.Clean("/" + strings.ReplaceAll(opts.Dest, "\\", "/"))
-	if dest == "/" {
-		return errors.New("目标目录无效")
-	}
-
-	if tok, err := mygo.Secrets.Get(hfSecretKey); err == nil && len(tok) > 0 {
-		if err := c.uploadSecret(ctx, name, tok); err != nil {
-			return fmt.Errorf("上传 HuggingFace token 失败：%w", err)
-		}
-		_ = out.Send(Chunk{Stream: "info", Text: "已向 VM 提供 HuggingFace token\n"})
-	}
-	code := fmt.Sprintf(hfDownloadScript, pyLiteral(opts.Repo), pyLiteral(opts.Files), pyLiteral(dest), opts.TotalBytes)
-	return c.stream(ctx, code, out, "exec", "--timeout", "0", "-s", name)
 }
 
 // uploadSecret puts the token on the VM as a file, removing the local copy

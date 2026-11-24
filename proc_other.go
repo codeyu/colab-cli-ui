@@ -15,7 +15,7 @@ func shellQuote(s string) string { return "'" + strings.ReplaceAll(s, "'", `'\''
 
 // openTerminal runs colab with args in a new terminal window, for the commands
 // that need a TTY (repl, ssh, auth, drivemount).
-func openTerminal(bin string, args []string, title string) error {
+func openTerminal(bin string, args []string, title string, env []string) error {
 	line := shellQuote(bin)
 	for _, a := range args {
 		line += " " + shellQuote(a)
@@ -33,7 +33,9 @@ tell application "Terminal" to activate`
 			{"xterm", "-T", title, "-e", "sh", "-c", line + "; exec $SHELL"},
 		} {
 			if _, err := exec.LookPath(term[0]); err == nil {
-				return exec.Command(term[0], term[1:]...).Start()
+				cmd := exec.Command(term[0], term[1:]...)
+				cmd.Env = env
+				return cmd.Start()
 			}
 		}
 		return errors.New("没有找到可用的终端程序")

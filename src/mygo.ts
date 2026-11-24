@@ -91,6 +91,22 @@ export interface GPU {
   power: number;
 }
 
+/**
+ * GuardStatus is the watchdog's state on a VM. Times are seconds on the VM's
+ * clock; VMNow lets the page count down without trusting either clock.
+ */
+export interface GuardStatus {
+  running: boolean;
+  /** 0: no deadline */
+  deadline: number;
+  idleSeconds: number;
+  vmNow: number;
+  /** 0: not measured yet */
+  lastBusy: number;
+  canRelease: boolean;
+  lastLog: string;
+}
+
 /** HFDownloadOptions say what to download, and where on the VM. */
 export interface HFDownloadOptions {
   repo: string;
@@ -158,6 +174,17 @@ export interface NewSessionOptions {
   highMem: boolean;
 }
 
+/**
+ * Notice is a message for the user from work that ends after the call that
+ * started it, such as cleaning up after a cancelled create.
+ */
+export interface Notice {
+  /** success, error or info */
+  kind: string;
+  title: string;
+  detail?: string;
+}
+
 /** RunOptions are the choices of an ephemeral `colab run` job. */
 export interface RunOptions {
   script: string;
@@ -203,6 +230,23 @@ export interface Settings {
    * mirror; "" for https://huggingface.co.
    */
   hfEndpoint: string;
+  /**
+   * GuardHours and GuardIdleMinutes are the defaults of a new session's
+   * watchdog: release after this many hours, or after this many idle
+   * minutes (0: off).
+   */
+  guardHours: number;
+  guardIdleMinutes: number;
+  /**
+   * BalanceFloor releases every session the app knows when the balance
+   * falls below it, while the app runs (0: off).
+   */
+  balanceFloor: number;
+  /**
+   * IPv4First makes the CLI try IPv4 addresses first, for networks whose
+   * IPv6 does not get through (see netfix.go).
+   */
+  ipv4First: boolean;
 }
 
 /** SetupStatus is what the first-run guide checks. */
@@ -296,13 +340,18 @@ export const Colab = {
    * with `colab log -o`: .ipynb, .md, .txt or .jsonl by the file's suffix.
    */
   exportHistory: bind<[string], string>("Colab.ExportHistory", (name: string) => [name]),
+  /** ExtendGuard moves the deadline later by hours. */
+  extendGuard: bind<[string, number], GuardStatus>("Colab.ExtendGuard", (name: string, hours: number) => [name, hours]),
+  /** GetGuard reports the watchdog's state. */
+  getGuard: bind<[string], GuardStatus>("Colab.GetGuard", (name: string) => [name]),
   /** GetHFToken reports the stored token's owner, without the token. */
   getHFToken: bind<[], HFTokenStatus>("Colab.GetHFToken", () => []),
   /** GetSettings returns the app's preferences. */
   getSettings: bind<[], Settings>("Colab.GetSettings", () => []),
   /**
    * HFDownload downloads files of a model onto the session's VM with
-   * huggingface_hub, streaming progress.
+   * huggingface_hub, in a job that outlives a dropped connection, streaming its
+   * progress.
    */
   hfDownload: bind<[string, HFDownloadOptions, Channel<Chunk>], void>("Colab.HFDownload", (name: string, opts: HFDownloadOptions, out: Channel<Chunk>) => [name, opts, out]),
   /** HFModelInfo returns a model's metadata and files with their sizes. */
@@ -324,6 +373,11 @@ export const Colab = {
    * uv's output.
    */
   installCLI: bind<[Channel<Chunk>], void>("Colab.InstallCLI", (out: Channel<Chunk>) => [out]),
+  /**
+   * InterruptKernel interrupts the code running in the session's kernel, as a
+   * notebook's stop button does, keeping its variables.
+   */
+  interruptKernel: bind<[string], void>("Colab.InterruptKernel", (name: string) => [name]),
   /**
    * ListFiles lists a directory on the VM. Paths are relative to the VM's root,
    * as "content" for /content.
@@ -360,6 +414,13 @@ export const Colab = {
    * "requirements" (.txt) or "" for any file. It returns "" when canceled.
    */
   pickFile: bind<[string], string>("Colab.PickFile", (kind: string) => [kind]),
+  /**
+   * ReleaseOrphan stops a runtime the CLI has no local record of (shown as [?],
+   * e.g. one opened in the browser): `colab stop` can only address a runtime by
+   * a recorded name, so it runs against a throwaway state file that records the
+   * endpoint under a placeholder name, and the CLI's own client releases it.
+   */
+  releaseOrphan: bind<[string], void>("Colab.ReleaseOrphan", (endpoint: string) => [endpoint]),
   /** RemoveFile deletes a file on the VM. */
   removeFile: bind<[string, string], string>("Colab.RemoveFile", (name: string, remote: string) => [name, remote]),
   /** RestartKernel restarts a runtime's Jupyter kernel, clearing its state. */
@@ -380,6 +441,12 @@ export const Colab = {
    * status, and any others the server still has assigned to the account.
    */
   sessions: bind<[], Session[]>("Colab.Sessions", () => []),
+  /**
+   * SetGuard sets how long the runtime may run from now (hours, 0 for no
+   * limit) and after how many idle minutes it is released (0 for never), and
+   * starts the watchdog when needed. Both 0 stops it.
+   */
+  setGuard: bind<[string, number, number], GuardStatus>("Colab.SetGuard", (name: string, hours: number, idleMinutes: number) => [name, hours, idleMinutes]),
   /** SetHFToken stores a token in the system's credential store; "" removes it. */
   setHFToken: bind<[string], HFTokenStatus>("Colab.SetHFToken", (token: string) => [token]),
   /** Setup reports whether uv and colab are installed. */
@@ -417,4 +484,11 @@ export const Colab = {
 export const events = {
   /** Activity is broadcast whenever a colab command starts or finishes. */
   activity: event<ActivityEntry>("activity"),
+  /** Notices are shown as toasts. */
+  notice: event<Notice>("notice"),
+  /**
+   * AuthLost is sent when a command found the CLI signed out: the page goes
+   * back to the sign-in step.
+   */
+  authLost: event<boolean>("auth-lost"),
 } as const;

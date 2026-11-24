@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Cpu, Server, Sparkles } from "lucide-react";
 import { Colab, errorMessage, isAbort, streamCall, type Chunk, type StartupScript, type Usage } from "../lib/api";
 import { runSteps } from "../lib/startup";
-import { ACCELERATORS, eligibilityOf } from "../lib/accelerators";
+import { ACCELERATORS, costLine, eligibilityOf } from "../lib/accelerators";
 import { cx, randomName } from "../lib/format";
 import { toast } from "../lib/store";
 import { Output } from "./Output";
@@ -27,6 +27,8 @@ export function NewSessionDialog({
   const [error, setError] = useState<string | null>(null);
   const [scripts, setScripts] = useState<StartupScript[]>([]);
   const [scriptId, setScriptId] = useState("");
+  const [guardHours, setGuardHours] = useState(0);
+  const [guardIdle, setGuardIdle] = useState(60);
   const abort = useRef<AbortController | null>(null);
   const info = ACCELERATORS.find((a) => a.id === acc)!;
 
@@ -38,6 +40,10 @@ export function NewSessionDialog({
       Colab.listScripts()
         .then(setScripts)
         .catch(() => setScripts([]));
+      Colab.getSettings().then((s) => {
+        setGuardHours(s.guardHours);
+        setGuardIdle(s.guardIdleMinutes);
+      });
     }
   }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -51,14 +57,25 @@ export function NewSessionDialog({
     abort.current = ac;
     try {
       await streamCall(
-        (ch) => Colab.createSession.with({ signal: ac.signal })({ name, accelerator: acc, highMem: highMem && info.highMem }, ch),
+        (ch) => Colab.createSession({ name, accelerator: acc, highMem: highMem && info.highMem }, ch),
         (c) => setChunks((l) => [...l, c]),
+        ac.signal,
       );
       toast("success", `会话 ${name} 已就绪`, `${info.label}${highMem && info.highMem ? " · 高内存" : ""}`);
       onCreated(name);
       onClose();
       const script = scripts.find((s) => s.id === scriptId);
-      if (script) void runSteps(name, script.steps.map((s) => s.code), { label: script.name, drive: script.drive });
+      // The watchdog first, so the runtime is guarded while the script runs.
+      void (async () => {
+        if (guardHours > 0 || guardIdle > 0) {
+          try {
+            await Colab.setGuard(name, guardHours, guardIdle);
+          } catch (e) {
+            toast("error", "自动释放没有启动", errorMessage(e));
+          }
+        }
+        if (script) await runSteps(name, script.steps.map((s) => s.code), { label: script.name, drive: script.drive });
+      })();
     } catch (e) {
       setError(isAbort(e) ? "已取消申请" : errorMessage(e));
     } finally {
@@ -140,8 +157,28 @@ export function NewSessionDialog({
           </div>
           <div className="mt-2 text-[11px] text-muted-foreground">
             {info.note}
+            <span className="ml-2 text-foreground">{costLine(acc, highMem && info.highMem, usage?.balance)}</span>
           </div>
         </div>
+
+        <Field label="自动释放" hint="由 VM 上的看门狗执行，关掉本软件也有效">
+          <div className="flex gap-2">
+            <select className={inputClass} value={guardHours} onChange={(e) => setGuardHours(Number(e.target.value))} disabled={busy}>
+              {[0, 1, 2, 4, 8, 12, 24].map((h) => (
+                <option key={h} value={h}>
+                  {h ? `最长运行 ${h} 小时` : "不限运行时长"}
+                </option>
+              ))}
+            </select>
+            <select className={inputClass} value={guardIdle} onChange={(e) => setGuardIdle(Number(e.target.value))} disabled={busy}>
+              {[0, 15, 30, 60, 120].map((m) => (
+                <option key={m} value={m}>
+                  {m ? `空闲 ${m} 分钟后释放` : "空闲不释放"}
+                </option>
+              ))}
+            </select>
+          </div>
+        </Field>
 
         {scripts.length > 0 && (
           <Field label="启动脚本" hint="会话就绪后自动执行，进度在控制台里">

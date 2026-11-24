@@ -212,8 +212,8 @@ function ModelDetail({ id, session, onUseInConsole }: { id: string; session: Ses
   function download() {
     if (!session) return;
     const list = files.filter((f) => picked.has(f.name)).map((f) => f.name);
-    void runCell(session.name, { kind: "download", title: `下载 ${id}`, code: id }, (signal, ch) =>
-      Colab.hfDownload.with({ signal })(session.name, { repo: id, files: list, dest, totalBytes: total }, ch),
+    void runCell(session.name, { kind: "download", title: `下载 ${id}`, code: id }, (ch) =>
+      Colab.hfDownload(session.name, { repo: id, files: list, dest, totalBytes: total }, ch),
     ).then((ok) => ok && toast("success", "模型已下载到 VM", dest));
   }
 

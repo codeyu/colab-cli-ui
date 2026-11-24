@@ -3,7 +3,61 @@ import { BookOpen, CheckCircle2, ExternalLink, FolderSearch, Save, XCircle } fro
 import { Colab, errorMessage, type Account, type Environment, type HFTokenStatus, type Settings } from "../lib/api";
 import { toast } from "../lib/store";
 import { ScriptsCard } from "./StartupScripts";
-import { Button, Card, Field, Segmented, Spinner, inputClass } from "./ui";
+import { Button, Card, Field, Segmented, Spinner, Toggle, inputClass } from "./ui";
+
+function GuardCard({
+  settings,
+  onChange,
+  onSave,
+  saving,
+}: {
+  settings: Settings;
+  onChange: (s: Settings) => void;
+  onSave: () => void;
+  saving: boolean;
+}) {
+  return (
+    <Card className="mt-4 p-5">
+      <div className="text-[13px] font-semibold">费用保护</div>
+      <div className="mt-0.5 text-[11px] text-muted-foreground">Colab 只要运行时存在就计费，空闲也一样</div>
+      <div className="mt-4 flex flex-col gap-4">
+        <Field label="新会话默认的自动释放" hint="由 VM 上的看门狗执行，关掉本软件也有效；新建会话时可以改">
+          <div className="flex gap-2">
+            <select className={inputClass} value={settings.guardHours} onChange={(e) => onChange({ ...settings, guardHours: Number(e.target.value) })}>
+              {[0, 1, 2, 4, 8, 12, 24].map((h) => (
+                <option key={h} value={h}>
+                  {h ? `最长运行 ${h} 小时` : "不限运行时长"}
+                </option>
+              ))}
+            </select>
+            <select className={inputClass} value={settings.guardIdleMinutes} onChange={(e) => onChange({ ...settings, guardIdleMinutes: Number(e.target.value) })}>
+              {[0, 15, 30, 60, 120].map((m) => (
+                <option key={m} value={m}>
+                  {m ? `空闲 ${m} 分钟后释放` : "空闲不释放"}
+                </option>
+              ))}
+            </select>
+          </div>
+        </Field>
+        <Field label="余额下限（CU）" hint="余额低于它时，释放本机创建的全部会话。只在本软件运行时检查；0 表示不启用">
+          <div className="flex gap-2">
+            <input
+              className={inputClass + " w-32"}
+              type="number"
+              min={0}
+              step={1}
+              value={settings.balanceFloor}
+              onChange={(e) => onChange({ ...settings, balanceFloor: Math.max(0, Number(e.target.value) || 0) })}
+            />
+            <Button loading={saving} onClick={onSave}>
+              保存
+            </Button>
+          </div>
+        </Field>
+      </div>
+    </Card>
+  );
+}
 
 function HFCard({
   settings,
@@ -159,6 +213,10 @@ export function SettingsView({
             <Field label="OAuth 客户端配置（-c）" hint="默认 ~/.colab-cli-oauth-config.json，不存在时使用 CLI 内置配置。">
               <input className={inputClass} value={s.oauthConfig} onChange={(e) => setS({ ...s, oauthConfig: e.target.value })} placeholder="默认" />
             </Field>
+            <div>
+              <Toggle checked={s.ipv4First} onChange={(v) => setS({ ...s, ipv4First: v })} label="优先使用 IPv4" />
+              <div className="mt-1 text-[11px] text-muted-foreground">IPv6 不通的网络里，CLI 的请求会很慢、控制台会报「socket is already closed」。开启后先尝试 IPv4，不影响只有 IPv6 的网络。</div>
+            </div>
             <Field label="会话列表自动刷新（秒）" hint="0 表示不自动刷新。每次刷新会调用 colab status 与 colab sessions。">
               <input
                 className={inputClass + " w-32"}
@@ -175,6 +233,8 @@ export function SettingsView({
             </Button>
           </div>
         </Card>
+
+        <GuardCard settings={s} onChange={setS} onSave={save} saving={saving} />
 
         <HFCard settings={s} onChange={setS} onSave={save} saving={saving} />
 

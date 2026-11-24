@@ -24,9 +24,22 @@ type Settings struct {
 	// HFEndpoint is where the app searches HuggingFace models, e.g. a
 	// mirror; "" for https://huggingface.co.
 	HFEndpoint string `json:"hfEndpoint"`
+	// GuardHours and GuardIdleMinutes are the defaults of a new session's
+	// watchdog: release after this many hours, or after this many idle
+	// minutes (0: off).
+	GuardHours       float64 `json:"guardHours"`
+	GuardIdleMinutes int     `json:"guardIdleMinutes"`
+	// BalanceFloor releases every session the app knows when the balance
+	// falls below it, while the app runs (0: off).
+	BalanceFloor float64 `json:"balanceFloor"`
+	// IPv4First makes the CLI try IPv4 addresses first, for networks whose
+	// IPv6 does not get through (see netfix.go).
+	IPv4First bool `json:"ipv4First"`
 }
 
-func defaultSettings() Settings { return Settings{Auth: "oauth2", RefreshSeconds: 30} }
+func defaultSettings() Settings {
+	return Settings{Auth: "oauth2", RefreshSeconds: 30, GuardIdleMinutes: 60, IPv4First: true}
+}
 
 func settingsFile() (string, error) {
 	dir, err := mygo.App.Path(mygo.PathUserData)

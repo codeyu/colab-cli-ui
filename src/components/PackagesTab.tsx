@@ -23,7 +23,7 @@ export function PackagesTab({ session }: { session: string }) {
     void runCell(
       session,
       { kind: "install", title: requirements ? `pip install -r ${requirements.split(/[\\/]/).pop()}` : `pip install ${list.join(" ")}` },
-      (signal, ch) => Colab.install.with({ signal })(session, list, requirements, ch),
+      (ch) => Colab.install(session, list, requirements, ch),
     );
   }
 

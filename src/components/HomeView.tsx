@@ -12,7 +12,7 @@ import {
   UserRound,
 } from "lucide-react";
 import { Colab, errorMessage, type Account, type Session, type Usage } from "../lib/api";
-import { ACCELERATORS, eligibilityOf } from "../lib/accelerators";
+import { ACCELERATORS, costLine, eligibilityOf } from "../lib/accelerators";
 import { cx, duration } from "../lib/format";
 import { cellsStore, toast, useStore } from "../lib/store";
 import { runCell } from "./ConsoleTab";
@@ -38,6 +38,22 @@ export function HomeView({
 }) {
   const [stopAll, setStopAll] = useState(false);
   const [stopping, setStopping] = useState(false);
+  const [orphan, setOrphan] = useState<Session | null>(null);
+  const [releasing, setReleasing] = useState(false);
+
+  async function releaseOrphan(s: Session) {
+    setReleasing(true);
+    try {
+      await Colab.releaseOrphan(s.endpoint);
+      toast("success", "已释放", s.endpoint);
+    } catch (e) {
+      toast("error", "释放失败", errorMessage(e));
+    } finally {
+      setReleasing(false);
+      setOrphan(null);
+      onChanged();
+    }
+  }
   const local = sessions?.filter((s) => s.local) ?? [];
   const hours = usage && usage.ratePerHour > 0 ? usage.balance / usage.ratePerHour : null;
 
@@ -100,31 +116,68 @@ export function HomeView({
               还没有运行时，点击这里申请一台
             </button>
           )}
-          {sessions?.map((s) => (
-            <button
-              key={s.endpoint}
-              disabled={!s.local}
-              onClick={() => onOpen(s.name)}
-              className="rounded-xl border border-border bg-card p-3.5 text-left transition-colors hover:border-accent/40 disabled:opacity-60"
-            >
-              <div className="flex items-center gap-2">
-                <StatusDot tone={s.busy ? "warning" : s.local ? "success" : "muted"} pulse={s.busy} />
-                <span className="truncate text-[13px] font-semibold">{s.name}</span>
-                <Badge tone={s.hardware === "CPU" ? "neutral" : "accent"} className="ml-auto">
-                  {s.hardware}
-                </Badge>
+          {sessions?.map((s) =>
+            s.local ? (
+              <button
+                key={s.endpoint}
+                onClick={() => onOpen(s.name)}
+                className="rounded-xl border border-border bg-card p-3.5 text-left transition-colors hover:border-accent/40"
+              >
+                <div className="flex items-center gap-2">
+                  <StatusDot tone={s.busy ? "warning" : "success"} pulse={s.busy} />
+                  <span className="truncate text-[13px] font-semibold">{s.name}</span>
+                  <Badge tone={s.hardware === "CPU" ? "neutral" : "accent"} className="ml-auto">
+                    {s.hardware}
+                  </Badge>
+                </div>
+                <div className="mt-1.5 truncate font-mono text-[11px] text-muted-foreground">{s.endpoint}</div>
+                <div className="mt-1 text-[11px] text-muted-foreground">
+                  {s.variant} · {s.shape} · {s.status || "IDLE"}
+                </div>
+              </button>
+            ) : (
+              <div key={s.endpoint} className="rounded-xl border border-dashed border-warning/50 bg-card p-3.5">
+                <div className="flex items-center gap-2">
+                  <StatusDot tone="warning" />
+                  <span className="truncate text-[13px] font-semibold">未在本机登记</span>
+                  <Badge tone={s.hardware === "CPU" ? "neutral" : "accent"} className="ml-auto">
+                    {s.hardware}
+                  </Badge>
+                </div>
+                <div className="mt-1.5 truncate font-mono text-[11px] text-muted-foreground">{s.endpoint}</div>
+                <div className="mt-1 flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
+                  <span className="truncate">仍在计费 · 网页或其它设备打开的</span>
+                  <Button size="sm" variant="danger" className="h-6" onClick={() => setOrphan(s)}>
+                    释放
+                  </Button>
+                </div>
               </div>
-              <div className="mt-1.5 truncate font-mono text-[11px] text-muted-foreground">{s.endpoint}</div>
-              <div className="mt-1 text-[11px] text-muted-foreground">
-                {s.variant} · {s.shape} · {s.local ? s.status || "IDLE" : "未在本机登记"}
-              </div>
-            </button>
-          ))}
+            ),
+          )}
         </div>
 
         <RunJob usage={usage} />
       </div>
 
+      <Dialog
+        open={orphan !== null}
+        onClose={() => !releasing && setOrphan(null)}
+        title="释放这个运行时？"
+        description={orphan ? `${orphan.hardware} · ${orphan.endpoint}：它不是由本机创建的（例如在网页里打开），释放后上面的文件和运行中的程序都会丢失。` : ""}
+        width={460}
+        footer={
+          <>
+            <Button variant="ghost" disabled={releasing} onClick={() => setOrphan(null)}>
+              取消
+            </Button>
+            <Button variant="danger" loading={releasing} onClick={() => orphan && releaseOrphan(orphan)}>
+              释放
+            </Button>
+          </>
+        }
+      >
+        <div />
+      </Dialog>
       <Dialog
         open={stopAll}
         onClose={() => setStopAll(false)}
@@ -202,7 +255,7 @@ function RunJob({ usage }: { usage: Usage | null }) {
 
   function run() {
     const opts = { script, args: splitArgs(args), accelerator: acc, highMem, keep, name: "" };
-    void runCell(RUN_KEY, { kind: "run", title: script.split(/[\\/]/).pop() ?? script }, (signal, ch) => Colab.runScript.with({ signal })(opts, ch)).then((ok) =>
+    void runCell(RUN_KEY, { kind: "run", title: script.split(/[\\/]/).pop() ?? script }, (ch) => Colab.runScript(opts, ch)).then((ok) =>
       ok ? toast("success", "任务完成", keep ? "虚拟机已保留，记得手动释放" : "虚拟机已自动释放") : undefined,
     );
   }
@@ -252,6 +305,7 @@ function RunJob({ usage }: { usage: Usage | null }) {
         </div>
         <div className="mt-3 flex items-center gap-5">
           <Toggle checked={highMem} onChange={setHighMem} label="高内存" />
+          <span className="text-[11px] text-muted-foreground">{costLine(acc, highMem, usage?.balance)}</span>
           <Toggle checked={keep} onChange={setKeep} label="完成后保留虚拟机（--keep）" />
           <div className="flex-1" />
           {running ? (

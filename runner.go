@@ -121,7 +121,7 @@ func (c *Colab) command(ctx context.Context, args ...string) (*exec.Cmd, string,
 	if s.Auth != "" && s.Auth != "oauth2" {
 		full = append(full, "--auth", s.Auth)
 	}
-	if s.ConfigPath != "" {
+	if s.ConfigPath != "" && !containsArg(args, "--config") {
 		full = append(full, "--config", s.ConfigPath)
 	}
 	if s.OAuthConfig != "" {
@@ -129,7 +129,7 @@ func (c *Colab) command(ctx context.Context, args ...string) (*exec.Cmd, string,
 	}
 	full = append(full, args...)
 	cmd := exec.CommandContext(ctx, bin, full...)
-	cmd.Env = append(os.Environ(),
+	cmd.Env = c.cliEnv(
 		"PYTHONIOENCODING=utf-8",
 		"PYTHONUTF8=1",
 		"PYTHONUNBUFFERED=1",
@@ -157,6 +157,16 @@ func quoteArgs(args []string) string {
 // run runs colab to completion and returns what it printed (stdout and stderr
 // together). A non-zero exit becomes a *CommandError carrying the output.
 func (c *Colab) run(ctx context.Context, stdin string, args ...string) (string, error) {
+	return c.runWith(ctx, stdin, false, args...)
+}
+
+// runQuiet is run for the app's own frequent calls (polling a download),
+// which stay out of the command log.
+func (c *Colab) runQuiet(ctx context.Context, stdin string, args ...string) (string, error) {
+	return c.runWith(ctx, stdin, true, args...)
+}
+
+func (c *Colab) runWith(ctx context.Context, stdin string, quiet bool, args ...string) (string, error) {
 	cmd, display, err := c.command(ctx, args...)
 	if err != nil {
 		return "", err
@@ -168,10 +178,17 @@ func (c *Colab) run(ctx context.Context, stdin string, args ...string) (string, 
 		cmd.Stdin = strings.NewReader(stdin)
 	}
 	entry := ActivityEntry{ID: nextActivityID(), Command: display, Started: time.Now(), Running: true}
-	Activity.Broadcast(entry)
+	if !quiet {
+		Activity.Broadcast(entry)
+	}
 	err = cmd.Run()
 	out := redact(buf.String())
-	c.finish(&entry, out, err)
+	if !quiet {
+		c.finish(&entry, out, err)
+	}
+	if err != nil && needsLogin(out) {
+		AuthLost.Broadcast(true)
+	}
 	if err != nil {
 		var exitErr *exec.ExitError
 		if errors.As(err, &exitErr) {
@@ -266,6 +283,10 @@ func (c *Colab) streamCmd(ctx context.Context, stdin string, out *mygo.Channel[C
 	logMu.Unlock()
 	c.finish(&entry, text, err)
 	if err != nil {
+		if needsLogin(text) {
+			AuthLost.Broadcast(true)
+			return errors.New("Colab CLI 的登录已失效，请重新登录")
+		}
 		if ctx.Err() != nil {
 			return errors.New("已取消")
 		}
@@ -403,4 +424,13 @@ func resolveColab(configured string) (string, error) {
 		}
 	}
 	return "", errors.New("没有找到 colab 命令。请先运行 `uv tool install google-colab-cli`，或在设置中指定路径")
+}
+
+func containsArg(args []string, a string) bool {
+	for _, x := range args {
+		if x == a {
+			return true
+		}
+	}
+	return false
 }

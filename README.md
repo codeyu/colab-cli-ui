@@ -47,13 +47,14 @@
 
 | 界面 | 对应的 CLI 命令 |
 | --- | --- |
-| 新建会话：CPU / T4 / L4 / G4 / A100 / H100 / TPU v5e-1 / v6e-1，可选高内存；账号无资格的加速器会变灰 | `colab new -s NAME --gpu/--tpu --high-mem` |
+| 新建会话：CPU / T4 / L4 / G4 / A100 / H100 / TPU v5e-1 / v6e-1，可选高内存；显示每小时大约消耗多少 CU；账号无资格的加速器会变灰；不允许重名；取消或失败后自动释放可能已分配的虚拟机 | `colab new -s NAME --gpu/--tpu --high-mem` |
 | 启动脚本：从历史记录里挑选步骤保存，新建会话时选择，开机后自动执行（需要时先挂载 Drive） | `colab exec` |
-| 侧栏会话列表（含服务器上未在本机登记的运行时），状态自动刷新 | `colab status`、`colab sessions` |
+| 侧栏会话列表，状态自动刷新；服务器上未在本机登记的运行时（例如网页里打开的）也会列出，并可一键释放 | `colab status`、`colab sessions` |
+| 费用保护：VM 上的看门狗按时长或空闲自动释放（关掉本软件也有效）；余额低于下限时释放全部会话 | `colab exec`（看门狗通过 `$TBE_RUNTIME_ADDR/unassign` 释放） |
 | 计算单元余额、每小时消耗、可用的加速器 | `colab usage`（读取服务器 ccu-info 的完整回复） |
-| 控制台：Python / Shell 流式输出、ANSI 颜色、matplotlib 图片内联显示，可中止；长时间无输出也不会超时 | `colab exec --timeout 0 -s NAME`（Shell 模式用 `%%bash`） |
+| 控制台：Python / Shell 流式输出、ANSI 颜色、matplotlib 图片内联显示；代码报错会如实标为失败；「停止」会中断内核里的代码 | `colab exec -s NAME`（Shell 模式用 `%%bash`）；中断走 Jupyter API |
 | 运行本地 `.py` / `.ipynb` | `colab exec -s NAME -f FILE` |
-| 模型：搜索 HuggingFace，勾选文件（默认只选 PyTorch 权重；GGUF 默认 Q4_K_M），下载到 VM，插入加载代码 | `colab exec`（huggingface_hub） |
+| 模型：搜索 HuggingFace，勾选文件（默认只选 PyTorch 权重；GGUF 默认 Q4_K_M），在 VM 后台下载（连接断开也不影响），插入加载代码 | `colab exec`（huggingface_hub） |
 | 文件浏览器：浏览、上传（支持拖拽）、下载、删除 | `colab ls / upload / download / rm` |
 | 包管理：安装包或 requirements.txt | `colab install` |
 | 资源监控：CPU、内存、磁盘、GPU 显存 / 利用率 / 温度 / 功耗曲线 | `colab exec`（psutil + nvidia-smi 采样） |
@@ -63,7 +64,7 @@
 | 重启内核、释放会话、全部释放 | `colab restart-kernel`、`colab stop [--all]` |
 | 一次性任务：新建 VM → 运行脚本 → 自动释放 | `colab run` |
 | CLI 命令日志（Ctrl+\`）：界面执行过的每条命令及其输出 | — |
-| 设置：colab 路径、`--auth oauth2/adc`、`--config`、`-c`、HuggingFace token 与搜索地址、启动脚本管理 | 全局参数 |
+| 设置：colab 路径、`--auth oauth2/adc`、`--config`、`-c`、优先使用 IPv4、费用保护默认值、HuggingFace token 与搜索地址、启动脚本管理 | 全局参数 |
 
 ## 数据与凭据
 

@@ -56,6 +56,8 @@ export function App() {
   const [newOpen, setNewOpen] = useState(false);
   const [activityOpen, setActivityOpen] = useState(false);
   const [refreshSeconds, setRefreshSeconds] = useState(30);
+  const [balanceFloor, setBalanceFloor] = useState(0);
+  const floorTripped = useRef(false);
   const activity = useStore(activityStore);
 
   // A refresh asked for while one runs joins it. After a change (a session
@@ -108,6 +110,7 @@ export function App() {
     setSetup(st);
     setEnv(st.env);
     setRefreshSeconds(s.refreshSeconds);
+    setBalanceFloor(s.balanceFloor);
     if (!st.env.ok) {
       setAuth(null);
       return;
@@ -124,8 +127,40 @@ export function App() {
 
   const ready = !!env?.ok && !!auth?.loggedIn;
 
+  // The balance floor: below it, release every session this machine created,
+  // once, until the balance is back above it.
   useEffect(() => {
-    const off = events.activity.on(recordActivity);
+    if (!usage || balanceFloor <= 0) return;
+    if (usage.balance >= balanceFloor) {
+      floorTripped.current = false;
+      return;
+    }
+    const mine = (sessions ?? []).filter((s) => s.local);
+    if (floorTripped.current || mine.length === 0) return;
+    floorTripped.current = true;
+    toast("error", `余额 ${usage.balance.toFixed(2)} CU 低于下限 ${balanceFloor} CU`, `正在释放 ${mine.length} 个会话`);
+    Colab.stopAll()
+      .then(() => toast("success", "已释放全部会话", "余额低于下限"))
+      .catch((e) => toast("error", "释放失败，请手动释放", errorMessage(e)))
+      .finally(() => {
+        void loadSessions(true);
+        void loadUsage();
+      });
+  }, [usage, balanceFloor, sessions, loadSessions, loadUsage]);
+  const authRef = useRef(auth);
+  authRef.current = auth;
+
+  useEffect(() => {
+    const offs = [
+      events.activity.on(recordActivity),
+      events.notice.on((n) => toast(n.kind === "success" || n.kind === "error" ? n.kind : "info", n.title, n.detail)),
+      // A command found the CLI signed out: back to the sign-in step.
+      events.authLost.on(() => {
+        if (authRef.current?.loggedIn) toast("error", "Colab CLI 的登录已失效", "请重新登录");
+        setAuth({ loggedIn: false, needsLogin: true, account: { provider: "", email: "", expiresIn: "", scopes: [] } });
+      }),
+    ];
+    const off = () => offs.forEach((f) => f());
     void boot();
     return off;
   }, [boot]);

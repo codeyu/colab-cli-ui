@@ -3,7 +3,7 @@ import { toast } from "./store";
 import { runCell } from "../components/ConsoleTab";
 
 /** Code the app runs for itself, which replaying should leave out. */
-const INTERNAL = "__COLAB_UI_STATS__";
+const INTERNAL = "__COLAB_UI_";
 
 /** Whether a history entry is code that can run again. */
 export function replayable(e: HistoryEvent): boolean {
@@ -57,7 +57,7 @@ export async function runSteps(target: string, codes: string[], opts: { label: s
   let failed = 0;
   for (const [i, code] of codes.entries()) {
     const title = codes.length === 1 ? label : `${label} ${i + 1}/${codes.length}`;
-    const ok = await runCell(target, { kind: "python", title, code }, (signal, ch) => Colab.exec.with({ signal })(target, code, false, ch));
+    const ok = await runCell(target, { kind: "python", title, code }, (ch) => Colab.exec(target, code, false, ch));
     if (!ok) {
       failed++;
       if (stopOnError) {

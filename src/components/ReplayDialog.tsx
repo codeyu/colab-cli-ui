@@ -47,8 +47,8 @@ export function ReplayDialog({
     if (target === NEW) {
       name = randomName(source.slice(0, 20));
       toast("info", `正在新建 ${hw} 会话 ${name}…`);
-      const ok = await runCell(name, { kind: "create", title: `新建 ${hw} 会话` }, (signal, ch) =>
-        Colab.createSession.with({ signal })({ name, accelerator: hw, highMem: origin.highMem }, ch),
+      const ok = await runCell(name, { kind: "create", title: `新建 ${hw} 会话` }, (ch) =>
+        Colab.createSession({ name, accelerator: hw, highMem: origin.highMem }, ch),
       );
       if (!ok) {
         const err = (cellsStore.get()[name] ?? []).at(-1)?.error;

@@ -282,8 +282,27 @@ func (c *Colab) CreateSession(ctx context.Context, opts NewSessionOptions, out *
 	if err := checkName(opts.Name); err != nil {
 		return err
 	}
+	// `colab new` with a name already in use overwrites its record, and the
+	// runtime it named keeps billing without one.
+	before, err := c.serverEndpoints(ctx)
+	if err != nil {
+		return err
+	}
+	for _, s := range before {
+		if s.Name == opts.Name {
+			return fmt.Errorf("已有名为 %s 的会话，请换一个名字", opts.Name)
+		}
+	}
 	args := append([]string{"new", "-s", opts.Name}, acceleratorArgs(opts.Accelerator, opts.HighMem)...)
-	return c.stream(ctx, "", out, args...)
+	err = c.stream(ctx, "", out, args...)
+	if err == nil {
+		return nil
+	}
+	// The request may have been granted anyway: stop what it allocated.
+	if did := c.reapAfterFailedNew(opts.Name, before); did != "" {
+		return fmt.Errorf("%w（%s）", err, did)
+	}
+	return err
 }
 
 // StopSession releases a runtime.
@@ -292,6 +311,10 @@ func (c *Colab) StopSession(ctx context.Context, name string) (string, error) {
 		return "", err
 	}
 	out, err := c.run(ctx, "", "stop", "-s", name)
+	if err == nil && strings.Contains(out, "not found") {
+		// `colab stop` of an unknown name says so and exits 0.
+		return "", fmt.Errorf("会话 %s 不存在：它可能已被释放或被 Colab 回收", name)
+	}
 	return strings.TrimSpace(stripANSI(out)), err
 }
 
@@ -369,7 +392,7 @@ func (c *Colab) OpenTerminal(name, kind string) error {
 		args = append(args, "--config", s.ConfigPath)
 	}
 	args = append(args, kind, "-s", name)
-	return openTerminal(bin, args, "colab "+kind+" "+name)
+	return openTerminal(bin, args, "colab "+kind+" "+name, c.cliEnv())
 }
 
 // ---------------------------------------------------------------------------
@@ -392,7 +415,11 @@ func (c *Colab) Exec(ctx context.Context, name, code string, shell bool, out *my
 	if !strings.HasSuffix(code, "\n") {
 		code += "\n"
 	}
-	return c.stream(ctx, code, out, "exec", "--timeout", "0", "-s", name)
+	start := time.Now()
+	if err := c.stream(ctx, code, out, "exec", "--timeout", execIdleTimeout, "-s", name); err != nil {
+		return execFailure(err)
+	}
+	return cellError(name, start, cellsOf(code))
 }
 
 // ExecFile runs a local .py script or .ipynb notebook in the session. A
@@ -404,7 +431,11 @@ func (c *Colab) ExecFile(ctx context.Context, name, file string, out *mygo.Chann
 	if _, err := os.Stat(file); err != nil {
 		return err
 	}
-	return c.stream(ctx, "", out, "exec", "--timeout", "0", "-s", name, "-f", file)
+	start := time.Now()
+	if err := c.stream(ctx, "", out, "exec", "--timeout", execIdleTimeout, "-s", name, "-f", file); err != nil {
+		return execFailure(err)
+	}
+	return cellError(name, start, cellsOf(fileCells(file)...))
 }
 
 // RunOptions are the choices of an ephemeral `colab run` job.
@@ -461,7 +492,11 @@ func (c *Colab) Install(ctx context.Context, name string, packages []string, req
 		}
 		args = append(args, pkgs...)
 	}
-	return c.stream(ctx, "", out, args...)
+	start := time.Now()
+	if err := c.stream(ctx, "", out, args...); err != nil {
+		return err
+	}
+	return cellError(name, start, installResult)
 }
 
 // ---------------------------------------------------------------------------
@@ -524,7 +559,7 @@ func (c *Colab) Stats(ctx context.Context, name string) (Stats, error) {
 	if err := checkName(name); err != nil {
 		return Stats{}, err
 	}
-	out, err := c.run(ctx, statsScript, "exec", "-s", name)
+	out, err := c.run(ctx, internal(statsScript), "exec", "-s", name)
 	if err != nil {
 		return Stats{}, err
 	}
@@ -697,7 +732,13 @@ type HistoryEvent struct {
 	Fields    map[string]string `json:"fields,omitempty"`
 }
 
+// historyRoot replaces the CLI's history directory in tests.
+var historyRoot string
+
 func historyDir() string {
+	if historyRoot != "" {
+		return historyRoot
+	}
 	home, _ := os.UserHomeDir()
 	return filepath.Join(home, ".config", "colab-cli", "history")
 }
@@ -754,6 +795,9 @@ func (c *Colab) History(name string, limit int) ([]HistoryEvent, error) {
 		var raw map[string]any
 		if json.Unmarshal(sc.Bytes(), &raw) != nil {
 			continue
+		}
+		if code, _ := raw["code"].(string); strings.Contains(code, "__COLAB_UI_") {
+			continue // the app's own cells: resource samples, download polls
 		}
 		events = append(events, toHistoryEvent(raw))
 	}

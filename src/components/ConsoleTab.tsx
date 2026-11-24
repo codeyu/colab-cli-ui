@@ -13,7 +13,7 @@ import {
 import type { Channel } from "mygo-runtime";
 import { Colab, errorMessage, isAbort, streamCall, type Chunk } from "../lib/api";
 import { cx, duration } from "../lib/format";
-import { addCell, appendChunk, cellsStore, clearCells, type Cell, updateCell, useStore } from "../lib/store";
+import { addCell, appendChunk, cellsStore, clearCells, toast, type Cell, updateCell, useStore } from "../lib/store";
 import { Output } from "./Output";
 import { Button, Empty, IconButton, Segmented, Spinner } from "./ui";
 
@@ -21,14 +21,24 @@ import { Button, Empty, IconButton, Segmented, Spinner } from "./ui";
 export async function runCell(
   session: string,
   meta: Omit<Cell, "id" | "chunks" | "status" | "started" | "abort">,
-  start: (signal: AbortSignal, ch: Channel<Chunk>) => Promise<void>,
+  start: (ch: Channel<Chunk>) => Promise<void>,
 ): Promise<boolean> {
   const ac = new AbortController();
   const id = addCell(session, { ...meta, abort: ac });
+  // Stopping only disconnects colab exec; the code would run on in the
+  // kernel, so interrupt it too.
+  if (meta.kind === "python" || meta.kind === "shell" || meta.kind === "file") {
+    ac.signal.addEventListener(
+      "abort",
+      () => void Colab.interruptKernel(session).catch((e) => toast("error", "代码可能仍在 VM 上运行", errorMessage(e))),
+      { once: true },
+    );
+  }
   try {
     await streamCall(
-      (ch) => start(ac.signal, ch),
+      start,
       (c) => appendChunk(session, id, c),
+      ac.signal,
     );
     updateCell(session, id, (c) => ({ ...c, status: "done", ended: Date.now(), abort: undefined }));
     return true;
@@ -83,7 +93,7 @@ export function ConsoleTab({ session }: { session: string }) {
     void runCell(
       session,
       { kind: m, title: m === "shell" ? "Shell" : "Python", code: source },
-      (signal, ch) => Colab.exec.with({ signal })(session, source, m === "shell", ch),
+      (ch) => Colab.exec(session, source, m === "shell", ch),
     );
   }
 
@@ -94,7 +104,7 @@ export function ConsoleTab({ session }: { session: string }) {
     void runCell(
       session,
       { kind: "file", title: file.split(/[\\/]/).pop() ?? file, code: file },
-      (signal, ch) => Colab.execFile.with({ signal })(session, file, ch),
+      (ch) => Colab.execFile(session, file, ch),
     );
   }
 

@@ -21,6 +21,7 @@ import { acceleratorInfo } from "../lib/accelerators";
 import { cx } from "../lib/format";
 import { cellsStore, toast, useStore } from "../lib/store";
 import { ConsoleTab, setConsoleDraft } from "./ConsoleTab";
+import { GuardChip } from "./GuardChip";
 import { ModelsTab } from "./ModelsTab";
 import { FilesTab } from "./FilesTab";
 import { HistoryPanel } from "./HistoryPanel";
@@ -105,6 +106,7 @@ export function SessionView({
               </Badge>
               {session.shape && <Badge>{session.shape}</Badge>}
               <Badge tone={session.busy || running ? "warning" : "success"}>{session.busy || running ? "运行中" : session.status || "IDLE"}</Badge>
+              <GuardChip session={name} />
             </div>
             <div className="mt-1 flex gap-3 truncate text-[11px] text-muted-foreground">
               <span className="font-mono" title="endpoint">

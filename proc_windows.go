@@ -17,7 +17,7 @@ func hideWindow(cmd *exec.Cmd) {
 
 // openTerminal runs colab with args in a new console window, for the commands
 // that need a TTY (repl, ssh, auth, drivemount).
-func openTerminal(bin string, args []string, title string) error {
+func openTerminal(bin string, args []string, title string, env []string) error {
 	parts := []string{`"` + bin + `"`}
 	for _, a := range args {
 		if strings.ContainsAny(a, " \t") {
@@ -28,6 +28,7 @@ func openTerminal(bin string, args []string, title string) error {
 	inner := strings.Join(parts, " ")
 	if wt, err := exec.LookPath("wt.exe"); err == nil {
 		cmd := exec.Command(wt)
+		cmd.Env = env
 		cmd.SysProcAttr = &syscall.SysProcAttr{
 			CmdLine: `wt.exe new-tab --title "` + title + `" cmd.exe /k "` + inner + `"`,
 		}
@@ -37,6 +38,7 @@ func openTerminal(bin string, args []string, title string) error {
 		}
 	}
 	cmd := exec.Command("cmd.exe")
+	cmd.Env = env
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		CmdLine:    `cmd.exe /c start "` + title + `" cmd.exe /k "` + inner + `"`,
 		HideWindow: true,

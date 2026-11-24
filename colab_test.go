@@ -107,17 +107,61 @@ func TestStripANSI(t *testing.T) {
 	}
 }
 
-func TestHFDownloadScript(t *testing.T) {
-	code := fmt.Sprintf(hfDownloadScript, pyLiteral(`Qwen/Qwen3-0.6B`), pyLiteral([]string{"model.safetensors", `we"ird<>.json`}), pyLiteral("/content/models/Qwen3-0.6B"), 1234)
-	if strings.Contains(code, "%!") {
-		t.Fatalf("format error:\n%s", code)
+func TestHFJobScripts(t *testing.T) {
+	job := "/root/.colab-cli-ui/jobs/abc123"
+	script := fmt.Sprintf(hfJobScript, pyLiteral(`Qwen/Qwen3-0.6B`), pyLiteral([]string{"model.safetensors", `we"ird<>.json`}), pyLiteral("/content/models/Qwen3-0.6B"), pyLiteral(job), 1234)
+	scripts := map[string]string{
+		"job.py":      script,
+		"launch.py":   fmt.Sprintf(jobLauncher, pyLiteral(job), pyLiteral("cHJpbnQoMSk=")),
+		"poll.py":     fmt.Sprintf(jobPoll, pyLiteral(job), 42),
+		"kill.py":     fmt.Sprintf(jobKill, pyLiteral(job)),
+		"watchdog.py": watchdogPy,
+		"guard.py":    fmt.Sprintf(guardScript, pyLiteral(`{"hours": 2, "idle_min": 60}`), pyLiteral("cHJpbnQoMSk=")),
 	}
-	if out := os.Getenv("HF_SCRIPT_OUT"); out != "" {
-		os.WriteFile(out, []byte(code), 0o644)
+	for n, code := range scripts {
+		if strings.Contains(code, "%!") {
+			t.Fatalf("%s: format error:\n%s", n, code)
+		}
+		if dir := os.Getenv("HF_SCRIPT_OUT"); dir != "" {
+			os.WriteFile(filepath.Join(dir, n), []byte(code), 0o644)
+		}
 	}
 	for id, ok := range map[string]bool{"Qwen/Qwen3-0.6B": true, "gpt2": true, "a/b/c": false, "../x": false, "a b/c": false} {
 		if hfRepoID.MatchString(id) != ok {
 			t.Errorf("%q: want %v", id, ok)
 		}
+	}
+}
+
+func TestSplitPoll(t *testing.T) {
+	out := "[colab] noise\n\r  1.00 / 2.00 GB 50%\n__COLAB_UI_POLL__{\"offset\": 120, \"state\": \"running\", \"error\": \"\", \"alive\": true}\n"
+	text, st := splitPoll(out)
+	if st == nil || st.Offset != 120 || st.State != "running" || !st.Alive {
+		t.Fatalf("status = %+v", st)
+	}
+	if text != "[colab] noise\n\r  1.00 / 2.00 GB 50%" {
+		t.Errorf("text = %q", text)
+	}
+	if _, st := splitPoll("Traceback ..."); st != nil {
+		t.Error("parsed a poll without its status line")
+	}
+}
+
+func TestWithIPv4First(t *testing.T) {
+	dir := ipv4HookDir()
+	if dir == "" {
+		t.Skip("no cache dir")
+	}
+	if b, err := os.ReadFile(filepath.Join(dir, "sitecustomize.py")); err != nil || !strings.Contains(string(b), "AF_INET") {
+		t.Fatalf("hook not written: %v", err)
+	}
+	sep := string(os.PathListSeparator)
+	got := withIPv4First([]string{"A=1", "PYTHONPATH=/x"})
+	if got[1] != "PYTHONPATH="+dir+sep+"/x" || got[0] != "A=1" {
+		t.Errorf("prepend: %v", got)
+	}
+	got = withIPv4First([]string{"A=1"})
+	if len(got) != 2 || got[1] != "PYTHONPATH="+dir {
+		t.Errorf("add: %v", got)
 	}
 }
