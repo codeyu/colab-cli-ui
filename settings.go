@@ -35,10 +35,16 @@ type Settings struct {
 	// IPv4First makes the CLI try IPv4 addresses first, for networks whose
 	// IPv6 does not get through (see netfix.go).
 	IPv4First bool `json:"ipv4First"`
+	// CreateRetries is how many more times creating a session is tried when
+	// Colab has no capacity or the network fails, waiting
+	// CreateRetryDelay seconds between tries. The default of the create
+	// dialog, and what other creates (tasks, replays) use.
+	CreateRetries    int `json:"createRetries"`
+	CreateRetryDelay int `json:"createRetryDelay"`
 }
 
 func defaultSettings() Settings {
-	return Settings{Auth: "oauth2", RefreshSeconds: 30, GuardIdleMinutes: 60, IPv4First: true}
+	return Settings{Auth: "oauth2", RefreshSeconds: 30, GuardIdleMinutes: 60, IPv4First: true, CreateRetryDelay: 30}
 }
 
 func settingsFile() (string, error) {

@@ -7,6 +7,7 @@ import { cx, randomName } from "../lib/format";
 import { toast } from "../lib/store";
 import { Output } from "./Output";
 import { Button, Dialog, Field, Toggle, inputClass } from "./ui";
+import { RetrySelects } from "./SettingsView";
 
 export function NewSessionDialog({
   open,
@@ -29,6 +30,8 @@ export function NewSessionDialog({
   const [scriptId, setScriptId] = useState("");
   const [guardHours, setGuardHours] = useState(0);
   const [guardIdle, setGuardIdle] = useState(60);
+  const [retries, setRetries] = useState(0);
+  const [retryDelay, setRetryDelay] = useState(30);
   const abort = useRef<AbortController | null>(null);
   const info = ACCELERATORS.find((a) => a.id === acc)!;
 
@@ -43,6 +46,8 @@ export function NewSessionDialog({
       Colab.getSettings().then((s) => {
         setGuardHours(s.guardHours);
         setGuardIdle(s.guardIdleMinutes);
+        setRetries(s.createRetries);
+        setRetryDelay(s.createRetryDelay);
       });
     }
   }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -57,7 +62,7 @@ export function NewSessionDialog({
     abort.current = ac;
     try {
       await streamCall(
-        (ch) => Colab.createSession({ name, accelerator: acc, highMem: highMem && info.highMem }, ch),
+        (ch) => Colab.createSession({ name, accelerator: acc, highMem: highMem && info.highMem, retries, retryDelay }, ch),
         (c) => setChunks((l) => [...l, c]),
         ac.signal,
       );
@@ -178,6 +183,18 @@ export function NewSessionDialog({
               ))}
             </select>
           </div>
+        </Field>
+
+        <Field label="创建失败时" hint="只在 Colab 暂时没有资源或网络出错时重试，可以随时取消">
+          <RetrySelects
+            retries={retries}
+            delay={retryDelay}
+            disabled={busy}
+            onChange={(r, d) => {
+              setRetries(r);
+              setRetryDelay(d);
+            }}
+          />
         </Field>
 
         {scripts.length > 0 && (

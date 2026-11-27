@@ -39,6 +39,13 @@ function GuardCard({
             </select>
           </div>
         </Field>
+        <Field label="创建失败时自动重试" hint="只在 Colab 暂时没有资源（Allocation refused）或网络出错时重试；账号没有资格用的 GPU 不会重试。新建会话时可以改">
+          <RetrySelects
+            retries={settings.createRetries}
+            delay={settings.createRetryDelay}
+            onChange={(createRetries, createRetryDelay) => onChange({ ...settings, createRetries, createRetryDelay })}
+          />
+        </Field>
         <Field label="余额下限（CU）" hint="余额低于它时，释放本机创建的全部会话。只在本软件运行时检查；0 表示不启用">
           <div className="flex gap-2">
             <input
@@ -56,6 +63,30 @@ function GuardCard({
         </Field>
       </div>
     </Card>
+  );
+}
+
+/** How many times to retry creating a session, and how long to wait. */
+export function RetrySelects({ retries, delay, onChange, disabled }: { retries: number; delay: number; onChange: (retries: number, delay: number) => void; disabled?: boolean }) {
+  const counts = [...new Set([0, 1, 2, 3, 5, 10, 20, retries])].sort((a, b) => a - b);
+  const delays = [...new Set([15, 30, 60, 120, 300, delay])].sort((a, b) => a - b);
+  return (
+    <div className="flex gap-2">
+      <select className={inputClass} value={retries} disabled={disabled} onChange={(e) => onChange(Number(e.target.value), delay)}>
+        {counts.map((n) => (
+          <option key={n} value={n}>
+            {n ? `失败后再试 ${n} 次` : "失败不重试"}
+          </option>
+        ))}
+      </select>
+      <select className={inputClass} value={delay} disabled={disabled || retries === 0} onChange={(e) => onChange(retries, Number(e.target.value))}>
+        {delays.map((d) => (
+          <option key={d} value={d}>
+            {d < 60 ? `每次间隔 ${d} 秒` : `每次间隔 ${d / 60} 分钟`}
+          </option>
+        ))}
+      </select>
+    </div>
   );
 }
 

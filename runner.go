@@ -127,7 +127,7 @@ func (c *Colab) command(ctx context.Context, args ...string) (*exec.Cmd, string,
 		"PYTHONUNBUFFERED=1",
 		"COLUMNS=160",
 		"TERM=xterm-256color",
-	}, accountEnv(acct)...)...)
+	}, append(accountEnv(acct), extraEnv(ctx)...)...)...)
 	cmd.WaitDelay = 3 * time.Second
 	hideWindow(cmd)
 	display := "colab " + quoteArgs(full)
@@ -149,6 +149,18 @@ func (c *Colab) globalArgs(acct string, args []string) []string {
 		full = append(full, "-c", s.OAuthConfig)
 	}
 	return full
+}
+
+// envKey adds environment variables to the colab commands of a context.
+type envKey struct{}
+
+func withEnv(ctx context.Context, kv ...string) context.Context {
+	return context.WithValue(ctx, envKey{}, append(extraEnv(ctx), kv...))
+}
+
+func extraEnv(ctx context.Context) []string {
+	kv, _ := ctx.Value(envKey{}).([]string)
+	return kv
 }
 
 // signInLost tells the page the sign-in is gone, when it is the active

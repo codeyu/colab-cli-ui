@@ -1,6 +1,8 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -166,5 +168,72 @@ func TestWithIPv4First(t *testing.T) {
 	got = withIPv4First([]string{"A=1"})
 	if len(got) != 2 || got[1] != "PYTHONPATH="+dir {
 		t.Errorf("add: %v", got)
+	}
+}
+
+func TestRetryableCreate(t *testing.T) {
+	cases := map[string]bool{
+		"[colab] Allocation refused (precondition failed). This can mean too many active sessions": true,
+		"HTTPSConnectionPool: Read timed out":                                                      true,
+		"503 Service Unavailable":                                                                  true,
+		"[colab] Backend rejected accelerator 'H100'. You may not have quota":                      false,
+		"Colab CLI 的登录已失效，请重新登录":                                                                   false,
+		"已有名为 demo 的会话，请换一个名字":                                                                     false,
+		"已取消":                            false,
+		"Traceback: KeyError 'endpoint'": false,
+	}
+	for msg, want := range cases {
+		if got := retryableCreate(errors.New(msg)); got != want {
+			t.Errorf("%q: retryable = %v, want %v", msg, got, want)
+		}
+	}
+}
+
+func TestPlainCreateError(t *testing.T) {
+	e503 := plainCreateError(errors.New("ColabRequestError: Failed to issue request POST\nhttps://colab.research.google.com/tun/m/assign?nbh=x&variant=GPU&accelerator=G4: Service Unavailable"), "G4")
+	if e503.Error() != "Colab 暂时没有空闲的 G4（503 Service Unavailable）" || !retryableCreate(e503) {
+		t.Errorf("503: %v retryable=%v", e503, retryableCreate(e503))
+	}
+	e412 := plainCreateError(errors.New("[colab] Allocation refused (precondition failed)."), "A100")
+	if !strings.Contains(e412.Error(), "412") || !retryableCreate(e412) {
+		t.Errorf("412: %v", e412)
+	}
+	other := errors.New("[colab] Backend rejected accelerator 'H100'.")
+	if plainCreateError(other, "H100") != other {
+		t.Error("other errors stay as they are")
+	}
+	if waitText(30*time.Second) != " 30 秒" || waitText(2*time.Minute) != " 2 分钟" {
+		t.Errorf("waitText: %q %q", waitText(30*time.Second), waitText(2*time.Minute))
+	}
+}
+
+func TestRetryCreate(t *testing.T) {
+	refused := errors.New("[colab] Allocation refused (precondition failed).")
+	run := func(retries int, results ...error) (error, int, []string) {
+		calls, notes := 0, []string{}
+		err := retryCreate(context.Background(), retries, time.Millisecond, func() error {
+			e := results[min(calls, len(results)-1)]
+			calls++
+			return e
+		}, func(m string) { notes = append(notes, m) })
+		return err, calls, notes
+	}
+	if err, calls, _ := run(3, refused, refused, nil); err != nil || calls != 3 {
+		t.Errorf("succeeds on the third try: err=%v calls=%d", err, calls)
+	}
+	if err, calls, notes := run(2, refused); err == nil || calls != 3 || len(notes) != 2 || !strings.Contains(err.Error(), "试了 3 次") {
+		t.Errorf("gives up after 2 retries: err=%v calls=%d notes=%v", err, calls, notes)
+	}
+	if err, calls, _ := run(5, errors.New("[colab] Backend rejected accelerator 'H100'.")); err == nil || calls != 1 {
+		t.Errorf("no retry without entitlement: calls=%d", calls)
+	}
+	if _, calls, _ := run(0, refused); calls != 1 {
+		t.Errorf("0 retries tries once: calls=%d", calls)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	calls := 0
+	err := retryCreate(ctx, 5, time.Hour, func() error { calls++; cancel(); return refused }, func(string) {})
+	if err == nil || calls != 1 {
+		t.Errorf("cancel stops the wait: err=%v calls=%d", err, calls)
 	}
 }

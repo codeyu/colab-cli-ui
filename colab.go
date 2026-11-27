@@ -271,6 +271,11 @@ type NewSessionOptions struct {
 	// Accelerator is "CPU", a GPU (T4, L4, G4, H100, A100) or a TPU (v5e1, v6e1).
 	Accelerator string `json:"accelerator"`
 	HighMem     bool   `json:"highMem"`
+	// Retries is how many more times to try when Colab has no capacity or
+	// the network fails, and RetryDelay the seconds between tries. Unset,
+	// they are the settings' defaults.
+	Retries    *int `json:"retries,omitempty"`
+	RetryDelay *int `json:"retryDelay,omitempty"`
 }
 
 func acceleratorArgs(acc string, highMem bool) []string {
@@ -298,6 +303,70 @@ func (c *Colab) CreateSession(ctx context.Context, opts NewSessionOptions, out *
 	// commands on a session find its account by its name.
 	acct := c.accountFor(ctx, nil)
 	ctx = withAccount(ctx, acct)
+	retries, delay := c.retryPlan(opts)
+	if retries > 0 {
+		// The CLI retries a 503 itself, three times over 70 s: with the
+		// app retrying, one try is one request, and the wait the one asked.
+		ctx = withEnv(ctx, "COLAB_CLI_ASSIGN_RETRIES=0")
+	}
+	return retryCreate(ctx, retries, time.Duration(delay)*time.Second,
+		func() error { return c.createOnce(ctx, acct, opts, out) },
+		func(msg string) { _ = out.Send(Chunk{Stream: "info", Text: "\n" + msg + "\n"}) })
+}
+
+// retryCreate runs attempt until it succeeds, fails for good, or has been
+// retried retries times, waiting delay between tries.
+func retryCreate(ctx context.Context, retries int, delay time.Duration, attempt func() error, note func(string)) error {
+	for try := 0; ; try++ {
+		err := attempt()
+		if err == nil || try >= retries || !retryableCreate(err) || ctx.Err() != nil {
+			if err != nil && try > 0 && ctx.Err() == nil {
+				return fmt.Errorf("试了 %d 次都没有成功：%w", try+1, err)
+			}
+			return err
+		}
+		note(fmt.Sprintf("第 %d 次没有成功，%s后重试（还剩 %d 次）…", try+1, waitText(delay), retries-try))
+		select {
+		case <-ctx.Done():
+			return errors.New("已取消")
+		case <-time.After(delay):
+		}
+	}
+}
+
+// retryPlan is how many retries a create gets and the seconds between them.
+func (c *Colab) retryPlan(opts NewSessionOptions) (int, int) {
+	s := c.settings()
+	retries, delay := s.CreateRetries, s.CreateRetryDelay
+	if opts.Retries != nil {
+		retries = *opts.Retries
+	}
+	if opts.RetryDelay != nil {
+		delay = *opts.RetryDelay
+	}
+	return min(max(retries, 0), 50), min(max(delay, 5), 3600)
+}
+
+// retryableCreate tells failures that may pass (no capacity, the network)
+// from ones that will not (no entitlement, signed out, a taken name).
+func retryableCreate(err error) bool {
+	msg := strings.ToLower(err.Error())
+	for _, never := range []string{"rejected accelerator", "登录", "已有名为", "名称无效", "已取消", "entitlement", "quota"} {
+		if strings.Contains(msg, strings.ToLower(never)) {
+			return false
+		}
+	}
+	for _, maybe := range []string{"暂时没有空闲", "拒绝分配", "allocation refused", "precondition failed", "412", "429", "500", "502", "503", "504",
+		"timed out", "timeout", "temporarily", "connection", "socket", "unavailable", "reset by peer"} {
+		if strings.Contains(msg, maybe) {
+			return true
+		}
+	}
+	return false
+}
+
+// createOnce is one try of CreateSession, cleaning up after a failure.
+func (c *Colab) createOnce(ctx context.Context, acct string, opts NewSessionOptions, out *mygo.Channel[Chunk]) error {
 	if owner := c.sessionOwner(opts.Name); owner != "" && owner != acct {
 		return fmt.Errorf("另一个账号上已有名为 %s 的会话，请换一个名字", opts.Name)
 	}
@@ -317,7 +386,9 @@ func (c *Colab) CreateSession(ctx context.Context, opts NewSessionOptions, out *
 	if err == nil {
 		return nil
 	}
-	// The request may have been granted anyway: stop what it allocated.
+	err = plainCreateError(err, opts.Accelerator)
+	// The request may have been granted anyway: stop what it allocated
+	// (before any retry, so that one never leaves two).
 	if did := c.reapAfterFailedNew(acct, opts.Name, before); did != "" {
 		return fmt.Errorf("%w（%s）", err, did)
 	}
@@ -941,4 +1012,28 @@ func (c *Colab) ExportHistory(ctx context.Context, name string) (string, error) 
 		return "", err
 	}
 	return local, nil
+}
+
+// plainCreateError says in a sentence why Colab refused a runtime, in place
+// of the CLI's traceback.
+func plainCreateError(err error, acc string) error {
+	msg := err.Error()
+	if acc == "" || strings.EqualFold(acc, "NONE") {
+		acc = "CPU"
+	}
+	switch {
+	case strings.Contains(msg, "/assign") && strings.Contains(msg, "Service Unavailable"):
+		return fmt.Errorf("Colab 暂时没有空闲的 %s（503 Service Unavailable）", acc)
+	case strings.Contains(msg, "Allocation refused"):
+		return fmt.Errorf("Colab 拒绝分配 %s（412）：可能同时开的会话太多，或暂时没有资源", acc)
+	}
+	return err
+}
+
+// waitText is "30 秒" or "2 分钟".
+func waitText(d time.Duration) string {
+	if d >= time.Minute && d%time.Minute == 0 {
+		return fmt.Sprintf(" %d 分钟", int(d/time.Minute))
+	}
+	return fmt.Sprintf(" %d 秒", int(d.Round(time.Second)/time.Second))
 }

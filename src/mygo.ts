@@ -241,6 +241,13 @@ export interface NewSessionOptions {
   /** Accelerator is "CPU", a GPU (T4, L4, G4, H100, A100) or a TPU (v5e1, v6e1). */
   accelerator: string;
   highMem: boolean;
+  /**
+   * Retries is how many more times to try when Colab has no capacity or
+   * the network fails, and RetryDelay the seconds between tries. Unset,
+   * they are the settings' defaults.
+   */
+  retries?: number;
+  retryDelay?: number;
 }
 
 /**
@@ -329,6 +336,14 @@ export interface Settings {
    * IPv6 does not get through (see netfix.go).
    */
   ipv4First: boolean;
+  /**
+   * CreateRetries is how many more times creating a session is tried when
+   * Colab has no capacity or the network fails, waiting
+   * CreateRetryDelay seconds between tries. The default of the create
+   * dialog, and what other creates (tasks, replays) use.
+   */
+  createRetries: number;
+  createRetryDelay: number;
 }
 
 /** SetupStatus is what the first-run guide checks. */
