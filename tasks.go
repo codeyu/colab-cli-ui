@@ -438,7 +438,9 @@ func (c *Colab) RunTask(ctx context.Context, req TaskRunRequest, out *mygo.Chann
 	if req.OutputDir == "" {
 		return errors.New("没有选择结果保存位置")
 	}
-	info := func(format string, a ...any) { _ = out.Send(Chunk{Stream: "info", Text: fmt.Sprintf(format, a...) + "\n"}) }
+	info := func(format string, a ...any) {
+		_ = out.Send(Chunk{Stream: "info", Text: fmt.Sprintf(format, a...) + "\n"})
+	}
 	name := req.Session
 	// Check the inputs before a VM is billed for them.
 	files, err := collectInputs(req.Inputs)
