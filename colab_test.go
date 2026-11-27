@@ -117,6 +117,9 @@ func TestHFJobScripts(t *testing.T) {
 		"kill.py":     fmt.Sprintf(jobKill, pyLiteral(job)),
 		"watchdog.py": watchdogPy,
 		"guard.py":    fmt.Sprintf(guardScript, pyLiteral(`{"hours": 2, "idle_min": 60}`), pyLiteral("cHJpbnQoMSk=")),
+		"llm.py":      fmt.Sprintf(llmDeployScript, pyLiteral("hf.co/a/b:Q4_K_M"), pyLiteral(""), pyLiteral(job), 8192),
+		"llmstat.py":  llmStatusScript,
+		"llmrm.py":    fmt.Sprintf(llmRemoveScript, pyLiteral("qwen3:8b")),
 	}
 	for n, code := range scripts {
 		if strings.Contains(code, "%!") {

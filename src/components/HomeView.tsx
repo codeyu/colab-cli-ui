@@ -12,8 +12,8 @@ import {
   UserRound,
 } from "lucide-react";
 import { Colab, errorMessage, type Account, type Session, type Usage } from "../lib/api";
-import { ACCELERATORS, costLine, eligibilityOf } from "../lib/accelerators";
-import { cx, duration } from "../lib/format";
+import { ACCELERATORS, costLine, eligibilityOf, sessionSpent, spentLine } from "../lib/accelerators";
+import { cx, duration, useNow } from "../lib/format";
 import { cellsStore, toast, useStore } from "../lib/store";
 import { runCell } from "./ConsoleTab";
 import { Output } from "./Output";
@@ -55,6 +55,8 @@ export function HomeView({
     }
   }
   const local = sessions?.filter((s) => s.local) ?? [];
+  const now = useNow();
+  const spentTotal = local.reduce((sum, s) => sum + (sessionSpent(s, now)?.cu ?? 0), 0);
   const hours = usage && usage.ratePerHour > 0 ? usage.balance / usage.ratePerHour : null;
 
   async function doStopAll() {
@@ -93,7 +95,10 @@ export function HomeView({
         <EligibilityPanel usage={usage} />
 
         <div className="mt-6 flex items-center justify-between">
-          <h2 className="text-[13px] font-semibold">运行时</h2>
+          <h2 className="text-[13px] font-semibold">
+            运行时
+            {spentTotal > 0 && <span className="ml-2 text-[11px] font-normal text-muted-foreground">这些会话合计约花 {spentTotal.toFixed(spentTotal < 10 ? 2 : 1)} CU</span>}
+          </h2>
           <div className="flex gap-2">
             {local.length > 0 && (
               <Button size="sm" variant="danger" loading={stopping} icon={<Power className="size-3.5" />} onClick={() => setStopAll(true)}>
@@ -134,6 +139,7 @@ export function HomeView({
                 <div className="mt-1 text-[11px] text-muted-foreground">
                   {s.variant} · {s.shape} · {s.status || "IDLE"}
                 </div>
+                {s.started > 0 && <div className="mt-1 text-[11px] text-foreground/80">{spentLine(s, now)}</div>}
               </button>
             ) : (
               <div key={s.endpoint} className="rounded-xl border border-dashed border-warning/50 bg-card p-3.5">

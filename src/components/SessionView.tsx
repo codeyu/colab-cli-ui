@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import {
   Activity,
   Boxes,
+  Bot,
+  Cable,
   ChevronDown,
   Cloud,
   ExternalLink,
@@ -17,8 +19,8 @@ import {
   TerminalSquare,
 } from "lucide-react";
 import { Colab, errorMessage, type Session } from "../lib/api";
-import { acceleratorInfo } from "../lib/accelerators";
-import { cx } from "../lib/format";
+import { acceleratorInfo, spentLine } from "../lib/accelerators";
+import { cx, useNow } from "../lib/format";
 import { cellsStore, toast, useStore } from "../lib/store";
 import { ConsoleTab, setConsoleDraft } from "./ConsoleTab";
 import { GuardChip } from "./GuardChip";
@@ -27,15 +29,20 @@ import { FilesTab } from "./FilesTab";
 import { HistoryPanel } from "./HistoryPanel";
 import { MonitorTab } from "./MonitorTab";
 import { PackagesTab } from "./PackagesTab";
+import { PortsTab } from "./PortsTab";
+import { ApiTab } from "./ApiTab";
+import { useForwards } from "../lib/forwards";
 import { Badge, Button, Dialog, StatusDot } from "./ui";
 
-type Tab = "console" | "models" | "files" | "packages" | "monitor" | "history";
+type Tab = "console" | "models" | "api" | "files" | "ports" | "packages" | "monitor" | "history";
 const lastTab: Record<string, Tab> = {};
 
 const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
   { id: "console", label: "控制台", icon: <Terminal className="size-3.5" /> },
   { id: "models", label: "模型", icon: <Boxes className="size-3.5" /> },
+  { id: "api", label: "模型 API", icon: <Bot className="size-3.5" /> },
   { id: "files", label: "文件", icon: <FolderOpen className="size-3.5" /> },
+  { id: "ports", label: "端口", icon: <Cable className="size-3.5" /> },
   { id: "packages", label: "包管理", icon: <Package className="size-3.5" /> },
   { id: "monitor", label: "资源监控", icon: <Activity className="size-3.5" /> },
   { id: "history", label: "历史", icon: <History className="size-3.5" /> },
@@ -61,6 +68,9 @@ export function SessionView({
   const cells = useStore(cellsStore)[name] ?? [];
   const running = cells.some((c) => c.status === "running");
   const info = acceleratorInfo(session.hardware);
+  const now = useNow();
+  const forwards = useForwards(name);
+  const spent = spentLine(session, now);
 
   useEffect(() => setTab(lastTab[name] ?? "console"), [name]);
 
@@ -112,6 +122,7 @@ export function SessionView({
               <span className="font-mono" title="endpoint">
                 {session.endpoint}
               </span>
+              {spent && <span title="按开机时间和估算费率计算">{spent}</span>}
               {session.lastExecution && <span>上次执行：{session.lastExecution}</span>}
             </div>
           </div>
@@ -153,6 +164,7 @@ export function SessionView({
               {t.icon}
               {t.label}
               {t.id === "console" && running && <span className="size-1.5 rounded-full bg-accent pulse-dot" />}
+              {t.id === "ports" && forwards.length > 0 && <span className="text-[11px] text-muted-foreground">{forwards.length}</span>}
             </button>
           ))}
         </nav>
@@ -170,7 +182,9 @@ export function SessionView({
             }}
           />
         )}
+        {tab === "api" && <ApiTab session={session} />}
         {tab === "files" && <FilesTab session={name} />}
+        {tab === "ports" && <PortsTab session={name} />}
         {tab === "packages" && <PackagesTab session={name} />}
         {tab === "monitor" && <MonitorTab session={name} />}
         {tab === "history" && (

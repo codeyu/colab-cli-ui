@@ -21,6 +21,11 @@ type sessionRecord struct {
 	URL      string `json:"url"`
 	Token    string `json:"token"`
 	KernelID string `json:"kernel_id"`
+	Endpoint string `json:"endpoint"`
+	// Expires is when Token expires, as the CLI writes it (ISO 8601).
+	Expires string `json:"token_expires_at"`
+	// TokenExpiresAt is Expires parsed, nil when unknown.
+	TokenExpiresAt *time.Time `json:"-"`
 }
 
 func (c *Colab) sessionRecord(name string) (sessionRecord, error) {
@@ -40,6 +45,12 @@ func (c *Colab) sessionRecord(name string) (sessionRecord, error) {
 	r, ok := all[name]
 	if !ok || r.URL == "" || r.Token == "" {
 		return sessionRecord{}, fmt.Errorf("没有会话 %s 的连接信息", name)
+	}
+	for _, layout := range []string{time.RFC3339Nano, "2006-01-02T15:04:05.999999"} {
+		if t, err := time.Parse(layout, r.Expires); err == nil {
+			r.TokenExpiresAt = &t
+			break
+		}
 	}
 	return r, nil
 }

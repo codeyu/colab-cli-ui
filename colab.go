@@ -185,6 +185,9 @@ type Session struct {
 	// Local is false for runtimes on the server that this machine has no
 	// record of (shown by the CLI as "[?]").
 	Local bool `json:"local"`
+	// Started is when the session was created, in Unix milliseconds; 0
+	// when unknown, as for a runtime created elsewhere.
+	Started int64 `json:"started"`
 }
 
 var sessionLine = regexp.MustCompile(`^\[(.+?)\]\s+(\S+)\s+\|\s+Hardware:\s*([^|]+?)\s+\|\s+Shape:\s*([^|]+?)\s+\|\s+Variant:\s*([^|]+?)(?:\s+\|\s+Status:\s*(.+))?$`)
@@ -229,8 +232,9 @@ func (c *Colab) Sessions(ctx context.Context) ([]Session, error) {
 	local := parseSessions(statusOut)
 	server := parseSessions(srvOut)
 	byEndpoint := map[string]bool{}
-	for _, s := range local {
+	for i, s := range local {
 		byEndpoint[s.Endpoint] = true
+		local[i].Started = sessionStarted(s.Name, s.Endpoint)
 	}
 	for _, s := range server {
 		if !byEndpoint[s.Endpoint] {
@@ -243,6 +247,9 @@ func (c *Colab) Sessions(ctx context.Context) ([]Session, error) {
 	}
 	if local == nil {
 		local = []Session{}
+	}
+	if statusErr == nil {
+		dropForwardsExcept(local)
 	}
 	return local, nil
 }
@@ -310,6 +317,7 @@ func (c *Colab) StopSession(ctx context.Context, name string) (string, error) {
 	if err := checkName(name); err != nil {
 		return "", err
 	}
+	closeForwardsOf(name)
 	out, err := c.run(ctx, "", "stop", "-s", name)
 	if err == nil && strings.Contains(out, "not found") {
 		// `colab stop` of an unknown name says so and exits 0.
@@ -320,6 +328,15 @@ func (c *Colab) StopSession(ctx context.Context, name string) (string, error) {
 
 // StopAll releases every runtime this machine created.
 func (c *Colab) StopAll(ctx context.Context) (string, error) {
+	tunnels.Lock()
+	var names []string
+	for name := range tunnels.links {
+		names = append(names, name)
+	}
+	tunnels.Unlock()
+	for _, n := range names {
+		closeForwardsOf(n)
+	}
 	out, err := c.run(ctx, "", "stop", "--all")
 	return strings.TrimSpace(stripANSI(out)), err
 }
@@ -362,7 +379,7 @@ func (c *Colab) OpenInBrowser(ctx context.Context, name string) error {
 
 // OpenExternal opens a web page in the browser.
 func (c *Colab) OpenExternal(url string) error {
-	if !strings.HasPrefix(url, "https://") {
+	if !strings.HasPrefix(url, "https://") && !strings.HasPrefix(url, "http://127.0.0.1:") {
 		return errors.New("只能打开 https 地址")
 	}
 	return mygo.Shell.OpenExternal(url)

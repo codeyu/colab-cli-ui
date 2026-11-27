@@ -175,19 +175,29 @@ func (c *Colab) HFDownload(ctx context.Context, name string, opts HFDownloadOpti
 		_ = out.Send(Chunk{Stream: "info", Text: "已向 VM 提供 HuggingFace token\n"})
 	}
 
+	job := newJobDir()
+	script := fmt.Sprintf(hfJobScript, pyLiteral(opts.Repo), pyLiteral(opts.Files), pyLiteral(dest), pyLiteral(job), opts.TotalBytes)
+	return c.runJob(ctx, name, job, script, "下载", out)
+}
+
+func newJobDir() string {
 	idb := make([]byte, 6)
 	rand.Read(idb)
-	job := jobsDir + "/" + hex.EncodeToString(idb)
-	script := fmt.Sprintf(hfJobScript, pyLiteral(opts.Repo), pyLiteral(opts.Files), pyLiteral(dest), pyLiteral(job), opts.TotalBytes)
+	return jobsDir + "/" + hex.EncodeToString(idb)
+}
+
+// runJob starts script as a detached job in the job directory on the VM and
+// streams its log until it ends. what names it in messages ("下载").
+func (c *Colab) runJob(ctx context.Context, name, job, script, what string, out *mygo.Channel[Chunk]) error {
 	launch := fmt.Sprintf(jobLauncher, pyLiteral(job), pyLiteral(base64.StdEncoding.EncodeToString([]byte(script))))
 	res, err := c.run(ctx, internal(launch), "exec", "-s", name)
 	if err != nil {
 		return err
 	}
 	if !strings.Contains(res, "__COLAB_UI_JOB__") {
-		return fmt.Errorf("没能在 VM 上启动下载：%s", tail(strings.TrimSpace(stripANSI(res)), 600))
+		return fmt.Errorf("没能在 VM 上启动%s：%s", what, tail(strings.TrimSpace(stripANSI(res)), 600))
 	}
-	_ = out.Send(Chunk{Stream: "info", Text: "下载已在 VM 后台开始\n"})
+	_ = out.Send(Chunk{Stream: "info", Text: what + "已在 VM 后台开始\n"})
 
 	var off int64
 	failures := 0
@@ -210,7 +220,7 @@ func (c *Colab) HFDownload(ctx context.Context, name string, opts HFDownloadOpti
 				if err == nil {
 					err = errors.New(tail(strings.TrimSpace(stripANSI(res)), 400))
 				}
-				return fmt.Errorf("读取下载进度失败（下载可能仍在 VM 上进行）：%w", err)
+				return fmt.Errorf("读取%s进度失败（它可能仍在 VM 上进行）：%w", what, err)
 			}
 			continue
 		}
@@ -225,9 +235,9 @@ func (c *Colab) HFDownload(ctx context.Context, name string, opts HFDownloadOpti
 		case st.State == "done":
 			return nil
 		case st.State == "error":
-			return errors.New("下载失败：" + st.Error)
+			return errors.New(what + "失败：" + st.Error)
 		case !st.Alive && polls > 0:
-			return errors.New("下载进程意外退出")
+			return errors.New(what + "进程意外退出")
 		}
 	}
 }

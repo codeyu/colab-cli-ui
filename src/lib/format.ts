@@ -1,3 +1,5 @@
+import { useEffect, useState } from "react";
+
 export function bytes(n: number | undefined): string {
   if (!n || n <= 0) return "0 B";
   const units = ["B", "KB", "MB", "GB", "TB"];
@@ -52,4 +54,14 @@ export function randomName(prefix = "s"): string {
 
 export function cx(...parts: (string | false | null | undefined)[]): string {
   return parts.filter(Boolean).join(" ");
+}
+
+/** The current time, updated every interval ms, for durations that move on. */
+export function useNow(interval = 30_000): number {
+  const [now, setNow] = useState(Date.now);
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), interval);
+    return () => clearInterval(t);
+  }, [interval]);
+  return now;
 }

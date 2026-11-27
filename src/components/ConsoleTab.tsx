@@ -13,16 +13,23 @@ import {
 import type { Channel } from "mygo-runtime";
 import { Colab, errorMessage, isAbort, streamCall, type Chunk } from "../lib/api";
 import { cx, duration } from "../lib/format";
+import { notifyDone } from "../lib/notify";
 import { addCell, appendChunk, cellsStore, clearCells, toast, type Cell, updateCell, useStore } from "../lib/store";
 import { Output } from "./Output";
 import { Button, Empty, IconButton, Segmented, Spinner } from "./ui";
 
-/** Runs a streaming task as a console cell of the session. */
+/**
+ * Runs a streaming task as a console cell of the session. A long task that
+ * ends while the window is in the background shows a notification, unless
+ * notify is false (a step of a longer run that notifies for itself).
+ */
 export async function runCell(
   session: string,
   meta: Omit<Cell, "id" | "chunks" | "status" | "started" | "abort">,
   start: (ch: Channel<Chunk>) => Promise<void>,
+  notify = true,
 ): Promise<boolean> {
+  const started = Date.now();
   const ac = new AbortController();
   const id = addCell(session, { ...meta, abort: ac });
   // Stopping only disconnects colab exec; the code would run on in the
@@ -41,8 +48,10 @@ export async function runCell(
       ac.signal,
     );
     updateCell(session, id, (c) => ({ ...c, status: "done", ended: Date.now(), abort: undefined }));
+    if (notify) notifyDone(`${meta.title}：完成`, `${session} · 用时 ${duration((Date.now() - started) / 1000)}`, started);
     return true;
   } catch (e) {
+    if (notify && !isAbort(e)) notifyDone(`${meta.title}：出错`, `${session} · ${errorMessage(e)}`, started);
     updateCell(session, id, (c) => ({
       ...c,
       status: isAbort(e) ? "canceled" : "error",

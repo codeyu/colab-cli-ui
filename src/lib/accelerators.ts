@@ -1,4 +1,4 @@
-import type { Usage } from "./api";
+import type { Session, Usage } from "./api";
 
 export interface AcceleratorInfo {
   id: string;
@@ -78,4 +78,32 @@ export function costLine(id: string, highMem: boolean, balance: number | undefin
   if (!r) return "";
   const hours = balance && balance > 0 ? balance / r : null;
   return `约 ${r.toFixed(2)} CU/小时${hours !== null ? ` · 余额约够 ${hours >= 10 ? hours.toFixed(0) : hours.toFixed(1)} 小时` : ""}`;
+}
+
+/** The estimated rate of a running session, from its hardware and shape. */
+export function sessionRate(s: Session): number {
+  const id = acceleratorInfo(s.hardware)?.id ?? s.hardware;
+  return estimatedRate(id, /high/i.test(s.shape));
+}
+
+/** How long a session has run and roughly what it cost, or null when its start is unknown. */
+export function sessionSpent(s: Session, now = Date.now()): { ms: number; cu: number } | null {
+  if (!s.started) return null;
+  const ms = Math.max(0, now - s.started);
+  return { ms, cu: (ms / 3_600_000) * sessionRate(s) };
+}
+
+/** "1 小时 23 分" / "12 分钟" */
+export function elapsedText(ms: number): string {
+  const m = Math.floor(ms / 60_000);
+  if (m < 60) return `${m} 分钟`;
+  return `${Math.floor(m / 60)} 小时 ${m % 60} 分`;
+}
+
+/** "已运行 1 小时 23 分 · 约花 7.3 CU" */
+export function spentLine(s: Session, now = Date.now()): string {
+  const sp = sessionSpent(s, now);
+  if (!sp) return "";
+  const cu = sp.cu < 0.01 ? "不到 0.01" : sp.cu < 10 ? sp.cu.toFixed(2) : sp.cu.toFixed(1);
+  return `已运行 ${elapsedText(sp.ms)}${sessionRate(s) ? ` · 约花 ${cu} CU` : ""}`;
 }

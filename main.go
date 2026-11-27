@@ -17,7 +17,7 @@ func main() {
 	mygo.Bind(&Colab{})
 
 	app.WhenReady(func() {
-		mygo.NewWindow(mygo.WindowOptions{
+		win := mygo.NewWindow(mygo.WindowOptions{
 			Title:           "Colab CLI UI",
 			Width:           1280,
 			Height:          820,
@@ -27,6 +27,7 @@ func main() {
 			StateKey:        "main",
 			URL:             "/",
 		})
+		setupDesktop(win)
 	})
 	if err := app.Run(); err != nil {
 		log.Fatal(err)

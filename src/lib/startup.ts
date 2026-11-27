@@ -1,5 +1,6 @@
 import { Colab, errorMessage, type HistoryEvent } from "./api";
 import { toast } from "./store";
+import { notifyDone } from "./notify";
 import { runCell } from "../components/ConsoleTab";
 
 /** Code the app runs for itself, which replaying should leave out. */
@@ -54,18 +55,21 @@ export async function waitForDrive(name: string): Promise<boolean> {
 export async function runSteps(target: string, codes: string[], opts: { label: string; stopOnError?: boolean; drive?: boolean }) {
   const { label, stopOnError = true, drive = false } = opts;
   if (drive && !(await waitForDrive(target))) return;
+  const started = Date.now();
   let failed = 0;
   for (const [i, code] of codes.entries()) {
     const title = codes.length === 1 ? label : `${label} ${i + 1}/${codes.length}`;
-    const ok = await runCell(target, { kind: "python", title, code }, (ch) => Colab.exec(target, code, false, ch));
+    const ok = await runCell(target, { kind: "python", title, code }, (ch) => Colab.exec(target, code, false, ch), false);
     if (!ok) {
       failed++;
       if (stopOnError) {
         toast("error", `${label}：第 ${i + 1} 步失败，已停止`);
+        notifyDone(`${label}：第 ${i + 1} 步失败`, target, started);
         return;
       }
     }
   }
   toast(failed ? "error" : "success", failed ? `${label}：${failed} 步失败` : `${label}：完成`);
+  notifyDone(failed ? `${label}：${failed} 步失败` : `${label}：完成`, target, started);
 }
 

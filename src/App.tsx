@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { AlertTriangle } from "lucide-react";
 import { Colab, errorMessage, events, type Account, type AuthState, type Environment, type SetupStatus, type Session, type Usage } from "./lib/api";
 import { activityStore, recordActivity, toast, useStore } from "./lib/store";
+import { sessionRate } from "./lib/accelerators";
 import { ActivityDrawer } from "./components/ActivityDrawer";
 import { HistoryView } from "./components/HistoryPanel";
 import { HomeView } from "./components/HomeView";
@@ -149,10 +150,26 @@ export function App() {
   }, [usage, balanceFloor, sessions, loadSessions, loadUsage]);
   const authRef = useRef(auth);
   authRef.current = auth;
+  const sessionsRef = useRef(sessions);
+  sessionsRef.current = sessions;
+
+  // The tray lists what is running, and keeps the app there while it is.
+  useEffect(() => {
+    if (sessions === null) return;
+    void Colab.setTrayStatus({
+      sessions: sessions.map((s) => ({ name: s.name, hardware: s.hardware, started: s.started, rate: sessionRate(s) })),
+      ratePerHour: usage?.ratePerHour ?? 0,
+    }).catch(() => {});
+  }, [sessions, usage]);
 
   useEffect(() => {
     const offs = [
       events.activity.on(recordActivity),
+      // The tray menu picked a session.
+      events.openSession.on((name) => {
+        const s = sessionsRef.current?.find((x) => x.name === name);
+        setView(s?.local ? { kind: "session", name } : { kind: "home" });
+      }),
       events.notice.on((n) => toast(n.kind === "success" || n.kind === "error" ? n.kind : "info", n.title, n.detail)),
       // A command found the CLI signed out: back to the sign-in step.
       events.authLost.on(() => {
@@ -167,8 +184,12 @@ export function App() {
 
   useEffect(() => {
     if (!ready || refreshSeconds <= 0) return;
+    // In the tray (window hidden) less often: the tray still has to see a
+    // session the watchdog released.
+    let ticks = 0;
     const t = setInterval(() => {
-      if (document.visibilityState === "visible") void loadSessions();
+      ticks++;
+      if (document.visibilityState === "visible" || ticks % 10 === 0) void loadSessions();
     }, refreshSeconds * 1000);
     const u = setInterval(() => document.visibilityState === "visible" && void loadUsage(), Math.max(60, refreshSeconds * 2) * 1000);
     return () => {

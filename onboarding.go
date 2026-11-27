@@ -275,7 +275,11 @@ func (c *Colab) LoginFinish(ctx context.Context, code string) (AuthState, error)
 		out := p.out.String()
 		if err != nil {
 			msg := "授权码无效或已过期，请重新登录"
-			if !strings.Contains(strings.ToLower(out), "invalid_grant") {
+			if strings.Contains(out, "Scope has changed") {
+				// Google's consent page lets each permission be unticked;
+				// without the Colab one the CLI cannot work.
+				msg = "授权时没有勾选全部权限。请重新登录，在 Google 的授权页面勾选所有权限（或点「全选」）再继续。"
+			} else if !strings.Contains(strings.ToLower(out), "invalid_grant") {
 				msg = tail(strings.TrimSpace(stripANSI(redact(out))), 600)
 			}
 			return AuthState{NeedsLogin: true}, errors.New(msg)

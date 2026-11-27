@@ -76,6 +76,20 @@ export interface FileEntry {
   isDir: boolean;
 }
 
+/** Forward is a local port forwarded to a port on a session's VM. */
+export interface Forward {
+  id: string;
+  session: string;
+  localPort: number;
+  remotePort: number;
+  label: string;
+  /** State is "connecting", "open" or "error"; Error says why. */
+  state: string;
+  error?: string;
+  /** Conns is the number of connections open through it. */
+  conns: number;
+}
+
 /** GPU is one accelerator's state, from nvidia-smi. */
 export interface GPU {
   name: string;
@@ -166,6 +180,43 @@ export interface HistoryEvent {
   fields?: Record<string, string>;
 }
 
+/** LLMDeployOptions say what to serve. */
+export interface LLMDeployOptions {
+  /**
+   * Model is an Ollama model ("qwen3:8b", "hf.co/user/repo:Q4_K_M"), or
+   * the name to give the file at Path.
+   */
+  model: string;
+  /**
+   * Path is a GGUF file on the VM (as on a mounted Drive) to serve
+   * instead of pulling Model; empty to pull.
+   */
+  path: string;
+  /** Context is the context length in tokens. */
+  context: number;
+}
+
+/** LLMModel is a model Ollama has on the VM. */
+export interface LLMModel {
+  name: string;
+  size: number;
+  /**
+   * Loaded is true when it is in memory; VRAM is how much of it is on
+   * the GPU.
+   */
+  loaded: boolean;
+  vram: number;
+}
+
+/** LLMStatus is Ollama's state on a VM. */
+export interface LLMStatus {
+  installed: boolean;
+  running: boolean;
+  version: string;
+  context: number;
+  models: LLMModel[];
+}
+
 /** NewSessionOptions are the choices for a new runtime. */
 export interface NewSessionOptions {
   name: string;
@@ -211,6 +262,11 @@ export interface Session {
    * record of (shown by the CLI as "[?]").
    */
   local: boolean;
+  /**
+   * Started is when the session was created, in Unix milliseconds; 0
+   * when unknown, as for a runtime created elsewhere.
+   */
+  started: number;
 }
 
 /** Settings are the app's preferences. */
@@ -289,6 +345,29 @@ export interface Step {
   code: string;
 }
 
+/** TraySession is a running session as the tray lists it. */
+export interface TraySession {
+  name: string;
+  hardware: string;
+  /**
+   * Started is when the session was created, in Unix milliseconds; 0
+   * when unknown.
+   */
+  started: number;
+  /** Rate is the estimated compute units per hour. */
+  rate: number;
+}
+
+/** TrayStatus is what the page knows of the running sessions. */
+export interface TrayStatus {
+  sessions: TraySession[];
+  /**
+   * RatePerHour is the account's rate as the server reports it, 0 when
+   * unknown: then the sessions' estimates are summed.
+   */
+  ratePerHour: number;
+}
+
 /** Usage is the account's compute-unit balance and what it may allocate. */
 export interface Usage {
   balance: number;
@@ -307,6 +386,12 @@ export interface Usage {
 
 /** Colab drives the google-colab-cli `colab` command for the page. */
 export const Colab = {
+  /**
+   * AddForward forwards 127.0.0.1:localPort to remotePort on the session's VM.
+   * localPort 0 takes remotePort when it is free, else any free port. It
+   * connects first, so a runtime that cannot be reached is reported here.
+   */
+  addForward: bind<[string, number, number, string], Forward>("Colab.AddForward", (session: string, remotePort: number, localPort: number, label: string) => [session, remotePort, localPort, label]),
   /**
    * AuthStatus checks the credentials with `colab whoami`. It never starts a
    * sign-in: with no input the CLI's prompt fails at once.
@@ -346,6 +431,8 @@ export const Colab = {
   getGuard: bind<[string], GuardStatus>("Colab.GetGuard", (name: string) => [name]),
   /** GetHFToken reports the stored token's owner, without the token. */
   getHFToken: bind<[], HFTokenStatus>("Colab.GetHFToken", () => []),
+  /** GetLLMStatus reports whether Ollama runs on the session's VM and its models. */
+  getLLMStatus: bind<[string], LLMStatus>("Colab.GetLLMStatus", (name: string) => [name]),
   /** GetSettings returns the app's preferences. */
   getSettings: bind<[], Settings>("Colab.GetSettings", () => []),
   /**
@@ -379,10 +466,22 @@ export const Colab = {
    */
   interruptKernel: bind<[string], void>("Colab.InterruptKernel", (name: string) => [name]),
   /**
+   * LLMChat sends a prompt to a model through a forwarded port, streaming
+   * the answer: the test that the API works end to end.
+   */
+  llmChat: bind<[number, string, string, Channel<Chunk>], void>("Colab.LLMChat", (localPort: number, model: string, prompt: string, out: Channel<Chunk>) => [localPort, model, prompt, out]),
+  /**
+   * LLMDeploy serves a model with Ollama on the session's VM, streaming the
+   * install, download and load. Port forwarding then brings the API here.
+   */
+  llmDeploy: bind<[string, LLMDeployOptions, Channel<Chunk>], void>("Colab.LLMDeploy", (name: string, opts: LLMDeployOptions, out: Channel<Chunk>) => [name, opts, out]),
+  /**
    * ListFiles lists a directory on the VM. Paths are relative to the VM's root,
    * as "content" for /content.
    */
   listFiles: bind<[string, string], FileEntry[]>("Colab.ListFiles", (name: string, dir: string) => [name, dir]),
+  /** ListForwards lists the forwarded ports. */
+  listForwards: bind<[], Forward[]>("Colab.ListForwards", () => []),
   /** ListScripts returns the startup scripts, most recently changed first. */
   listScripts: bind<[], StartupScript[]>("Colab.ListScripts", () => []),
   /** LoginCancel abandons a sign-in in progress. */
@@ -398,6 +497,8 @@ export const Colab = {
    * more is needed.
    */
   loginStart: bind<[], string>("Colab.LoginStart", () => []),
+  /** Notify shows a desktop notification; clicking it brings the window back. */
+  notify: bind<[string, string], void>("Colab.Notify", (title: string, body: string) => [title, body]),
   /** OpenExternal opens a web page in the browser. */
   openExternal: bind<[string], void>("Colab.OpenExternal", (url: string) => [url]),
   /** OpenInBrowser opens the runtime in Colab's web UI. */
@@ -423,6 +524,10 @@ export const Colab = {
   releaseOrphan: bind<[string], void>("Colab.ReleaseOrphan", (endpoint: string) => [endpoint]),
   /** RemoveFile deletes a file on the VM. */
   removeFile: bind<[string, string], string>("Colab.RemoveFile", (name: string, remote: string) => [name, remote]),
+  /** RemoveForward stops forwarding a port. */
+  removeForward: bind<[string], void>("Colab.RemoveForward", (id: string) => [id]),
+  /** RemoveLLMModel deletes a model from the VM's Ollama. */
+  removeLLMModel: bind<[string, string], void>("Colab.RemoveLLMModel", (name: string, model: string) => [name, model]),
   /** RestartKernel restarts a runtime's Jupyter kernel, clearing its state. */
   restartKernel: bind<[string], string>("Colab.RestartKernel", (name: string) => [name]),
   /**
@@ -449,6 +554,8 @@ export const Colab = {
   setGuard: bind<[string, number, number], GuardStatus>("Colab.SetGuard", (name: string, hours: number, idleMinutes: number) => [name, hours, idleMinutes]),
   /** SetHFToken stores a token in the system's credential store; "" removes it. */
   setHFToken: bind<[string], HFTokenStatus>("Colab.SetHFToken", (token: string) => [token]),
+  /** SetTrayStatus tells the tray which sessions are running. */
+  setTrayStatus: bind<[TrayStatus], void>("Colab.SetTrayStatus", (st: TrayStatus) => [st]),
   /** Setup reports whether uv and colab are installed. */
   setup: bind<[], SetupStatus>("Colab.Setup", () => []),
   /** ShowInFolder reveals a local file in the file manager. */
@@ -460,6 +567,8 @@ export const Colab = {
   stats: bind<[string], Stats>("Colab.Stats", (name: string) => [name]),
   /** StopAll releases every runtime this machine created. */
   stopAll: bind<[], string>("Colab.StopAll", () => []),
+  /** StopLLM stops the Ollama server on the VM, freeing the GPU. */
+  stopLLM: bind<[string], void>("Colab.StopLLM", (name: string) => [name]),
   /** StopSession releases a runtime. */
   stopSession: bind<[string], string>("Colab.StopSession", (name: string) => [name]),
   /**
@@ -491,4 +600,8 @@ export const events = {
    * back to the sign-in step.
    */
   authLost: event<boolean>("auth-lost"),
+  /** OpenSession asks the page to show a session (from the tray menu). */
+  openSession: event<string>("open-session"),
+  /** ForwardsChanged is sent with the whole list when a forward changes. */
+  forwardsChanged: event<Forward[]>("forwards-changed"),
 } as const;
