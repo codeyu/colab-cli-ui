@@ -61,6 +61,29 @@ type sshLink struct {
 	endpoint string
 	mu       sync.Mutex
 	client   *ssh.Client
+	// users counts the tasks copying files over it (under tunnels' lock).
+	users int
+}
+
+// holdLink is the session's SSH connection for a task to copy files over,
+// shared with the port forwards: a runtime may allow only one. release lets
+// it close once nothing uses it.
+func (c *Colab) holdLink(ctx context.Context, session string) (*sshLink, func(), error) {
+	l, err := c.linkFor(ctx, session)
+	if err != nil {
+		return nil, nil, err
+	}
+	tunnels.Lock()
+	tunnels.links[session] = l
+	l.users++
+	tunnels.Unlock()
+	release := func() {
+		tunnels.Lock()
+		l.users--
+		tunnels.Unlock()
+		closeIdleLinks()
+	}
+	return l, release, nil
 }
 
 var tunnels = struct {
@@ -235,7 +258,7 @@ func closeIdleLinks() {
 	}
 	var idle []*sshLink
 	for name, l := range tunnels.links {
-		if !used[name] {
+		if !used[name] && l.users == 0 {
 			idle = append(idle, l)
 			delete(tunnels.links, name)
 		}

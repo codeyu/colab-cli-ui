@@ -11,6 +11,7 @@ import { Onboarding } from "./components/Onboarding";
 import { NewSessionDialog } from "./components/NewSessionDialog";
 import { SessionView } from "./components/SessionView";
 import { SettingsView } from "./components/SettingsView";
+import { TasksView } from "./components/TasksView";
 import { Sidebar, type Theme, type View } from "./components/Sidebar";
 import { Button, Empty, Spinner, Toasts } from "./components/ui";
 
@@ -238,6 +239,15 @@ export function App() {
     main = <SettingsView env={env} account={account} accountError={accountError} onSaved={boot} onCheckAccount={loadAccount} />;
   } else if (view.kind === "models") {
     main = <ModelsTab session={null} />;
+  } else if (view.kind === "tasks") {
+    main = (
+      <TasksView
+        sessions={sessions ?? []}
+        usage={usage}
+        onGo={(name) => setView({ kind: "session", name })}
+        onSessionsChanged={() => loadSessions(true)}
+      />
+    );
   } else if (view.kind === "history") {
     main = (
       <HistoryView

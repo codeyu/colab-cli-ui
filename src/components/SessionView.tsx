@@ -37,6 +37,11 @@ import { Badge, Button, Dialog, StatusDot } from "./ui";
 type Tab = "console" | "models" | "api" | "files" | "ports" | "packages" | "monitor" | "history";
 const lastTab: Record<string, Tab> = {};
 
+/** Opens a session's page on a tab, the next time it is shown. */
+export function openOnTab(session: string, tab: Tab) {
+  lastTab[session] = tab;
+}
+
 const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
   { id: "console", label: "控制台", icon: <Terminal className="size-3.5" /> },
   { id: "models", label: "模型", icon: <Boxes className="size-3.5" /> },

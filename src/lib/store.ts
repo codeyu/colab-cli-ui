@@ -30,7 +30,7 @@ export type CellStatus = "running" | "done" | "error" | "canceled";
 
 export interface Cell {
   id: number;
-  kind: "python" | "shell" | "file" | "install" | "create" | "run" | "download" | "deploy";
+  kind: "python" | "shell" | "file" | "install" | "create" | "run" | "download" | "deploy" | "task";
   title: string;
   code?: string;
   chunks: Chunk[];

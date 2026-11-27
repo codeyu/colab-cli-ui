@@ -1,4 +1,5 @@
 import {
+  Library,
   Boxes,
   Coins,
   History,
@@ -18,7 +19,7 @@ import { cellsStore, useStore } from "../lib/store";
 import { Badge, IconButton, Spinner, StatusDot } from "./ui";
 import { AppMark } from "./AppMark";
 
-export type View = { kind: "home" } | { kind: "session"; name: string } | { kind: "models" } | { kind: "history" } | { kind: "settings" };
+export type View = { kind: "home" } | { kind: "session"; name: string } | { kind: "models" } | { kind: "tasks" } | { kind: "history" } | { kind: "settings" };
 export type Theme = "system" | "light" | "dark";
 
 export function Sidebar({
@@ -90,6 +91,9 @@ export function Sidebar({
         </NavItem>
         <NavItem icon={<Boxes className="size-4" />} active={view.kind === "models"} onClick={() => setView({ kind: "models" })}>
           模型
+        </NavItem>
+        <NavItem icon={<Library className="size-4" />} active={view.kind === "tasks"} onClick={() => setView({ kind: "tasks" })}>
+          任务库
         </NavItem>
         <NavItem icon={<History className="size-4" />} active={view.kind === "history"} onClick={() => setView({ kind: "history" })}>
           历史记录

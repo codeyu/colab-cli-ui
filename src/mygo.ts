@@ -371,6 +371,82 @@ export interface Step {
   code: string;
 }
 
+/** TaskDef is a task of the library. */
+export interface TaskDef {
+  id: string;
+  /**
+   * Kind is "batch" (files in, files out), "service" (something to reach
+   * through a port) or "setup" (code run in the kernel).
+   */
+  kind: string;
+  name: string;
+  category: string;
+  description: string;
+  builtin: boolean;
+  /**
+   * Hardware is the suggested accelerator (as in NewSessionOptions), and
+   * HardwareNote why.
+   */
+  hardware: string;
+  hardwareNote?: string;
+  params: TaskParam[];
+  /** InputLabel and OutputLabel describe a batch task's files. */
+  inputLabel?: string;
+  outputLabel?: string;
+  /** Script is a batch task's Python script. */
+  script?: string;
+  /** Steps are a setup task's code, run one after another in the kernel. */
+  steps?: string[];
+  /** Drive mounts Google Drive before a setup task's steps. */
+  drive?: boolean;
+  /** Service names what a service task opens ("llm-api"). */
+  service?: string;
+  updated?: number;
+}
+
+/** TaskOption is a choice of a select parameter. */
+export interface TaskOption {
+  value: string;
+  label: string;
+  hint?: string;
+}
+
+/**
+ * TaskParam is a field of a task's form; the script gets the values in the
+ * JSON file $TASK_PARAMS.
+ */
+export interface TaskParam {
+  id: string;
+  label: string;
+  /**
+   * Type is "select", "text", "number", "bool" or "multi" (several of
+   * Options, comma-separated).
+   */
+  type: string;
+  default?: string;
+  help?: string;
+  options?: TaskOption[];
+  /** ShowIf shows the field only when another has a value: "model=custom". */
+  showIf?: string;
+}
+
+/** TaskRunRequest says how to run a batch task. */
+export interface TaskRunRequest {
+  taskId: string;
+  /**
+   * Session runs it there; with Create it is the name of the session to
+   * create, with Create's accelerator.
+   */
+  session: string;
+  create?: NewSessionOptions;
+  params: Record<string, string>;
+  /** Inputs are local files and folders, OutputDir where results go. */
+  inputs: string[];
+  outputDir: string;
+  /** Release stops the session when the task ends. */
+  release: boolean;
+}
+
 /** TraySession is a running session as the tray lists it. */
 export interface TraySession {
   name: string;
@@ -436,6 +512,8 @@ export const Colab = {
   createSession: bind<[NewSessionOptions, Channel<Chunk>], void>("Colab.CreateSession", (opts: NewSessionOptions, out: Channel<Chunk>) => [opts, out]),
   /** DeleteScript removes a startup script. */
   deleteScript: bind<[string], void>("Colab.DeleteScript", (id: string) => [id]),
+  /** DeleteTask removes a user task. */
+  deleteTask: bind<[string], void>("Colab.DeleteTask", (id: string) => [id]),
   /**
    * Download asks where to save a remote file and downloads it there. It
    * returns the local path, or "" when canceled.
@@ -460,6 +538,8 @@ export const Colab = {
    * with `colab log -o`: .ipynb, .md, .txt or .jsonl by the file's suffix.
    */
   exportHistory: bind<[string], string>("Colab.ExportHistory", (name: string) => [name]),
+  /** ExportTask saves a task as a .colabtask.json file where the user picks. */
+  exportTask: bind<[string], string>("Colab.ExportTask", (id: string) => [id]),
   /** ExtendGuard moves the deadline later by hours. */
   extendGuard: bind<[string, number], GuardStatus>("Colab.ExtendGuard", (name: string, hours: number) => [name, hours]),
   /** GetGuard reports the watchdog's state. */
@@ -488,6 +568,11 @@ export const Colab = {
   history: bind<[string, number], HistoryEvent[]>("Colab.History", (name: string, limit: number) => [name, limit]),
   /** HistorySessions lists the sessions with a history log, newest first. */
   historySessions: bind<[], string[]>("Colab.HistorySessions", () => []),
+  /**
+   * ImportTask reads a task file the user picks, for the page to show before
+   * it is saved; it does not add it to the library.
+   */
+  importTask: bind<[], TaskDef | null>("Colab.ImportTask", () => []),
   /** Install installs Python packages on the VM, with uv when it can. */
   install: bind<[string, string[], string, Channel<Chunk>], void>("Colab.Install", (name: string, packages: string[], requirements: string, out: Channel<Chunk>) => [name, packages, requirements, out]),
   /**
@@ -519,6 +604,8 @@ export const Colab = {
   listForwards: bind<[], Forward[]>("Colab.ListForwards", () => []),
   /** ListScripts returns the startup scripts, most recently changed first. */
   listScripts: bind<[], StartupScript[]>("Colab.ListScripts", () => []),
+  /** ListTasks lists the built-in tasks, then the user's. */
+  listTasks: bind<[], TaskDef[]>("Colab.ListTasks", () => []),
   /** LoginCancel abandons a sign-in in progress. */
   loginCancel: bind<[], void>("Colab.LoginCancel", () => []),
   /**
@@ -536,6 +623,8 @@ export const Colab = {
   notify: bind<[string, string], void>("Colab.Notify", (title: string, body: string) => [title, body]),
   /** OpenExternal opens a web page in the browser. */
   openExternal: bind<[string], void>("Colab.OpenExternal", (url: string) => [url]),
+  /** OpenFolder opens a local folder in the file manager, as a task's output. */
+  openFolder: bind<[string], void>("Colab.OpenFolder", (dir: string) => [dir]),
   /** OpenInBrowser opens the runtime in Colab's web UI. */
   openInBrowser: bind<[string], void>("Colab.OpenInBrowser", (name: string) => [name]),
   /**
@@ -550,6 +639,10 @@ export const Colab = {
    * "requirements" (.txt) or "" for any file. It returns "" when canceled.
    */
   pickFile: bind<[string], string>("Colab.PickFile", (kind: string) => [kind]),
+  /** PickFolder asks for a folder, as where to save a task's output. */
+  pickFolder: bind<[string], string>("Colab.PickFolder", (title: string) => [title]),
+  /** PickTaskInputs asks for the files or a folder to process. */
+  pickTaskInputs: bind<[boolean], string[]>("Colab.PickTaskInputs", (folder: boolean) => [folder]),
   /**
    * ReleaseOrphan stops a runtime the CLI has no local record of (shown as [?],
    * e.g. one opened in the browser): `colab stop` can only address a runtime by
@@ -576,10 +669,17 @@ export const Colab = {
    * VM afterwards (unless Keep).
    */
   runScript: bind<[RunOptions, Channel<Chunk>], void>("Colab.RunScript", (opts: RunOptions, out: Channel<Chunk>) => [opts, out]),
+  /** RunTask runs a batch task, streaming each step. */
+  runTask: bind<[TaskRunRequest, Channel<Chunk>], void>("Colab.RunTask", (req: TaskRunRequest, out: Channel<Chunk>) => [req, out]),
   /** SaveScript creates a startup script, or replaces the one with its ID. */
   saveScript: bind<[StartupScript], StartupScript>("Colab.SaveScript", (s: StartupScript) => [s]),
   /** SaveSettings stores the app's preferences. */
   saveSettings: bind<[Settings], void>("Colab.SaveSettings", (s: Settings) => [s]),
+  /**
+   * SaveTask adds a task to the library, or replaces the user task with its
+   * ID. A new task gets an ID of its own.
+   */
+  saveTask: bind<[TaskDef], TaskDef>("Colab.SaveTask", (t: TaskDef) => [t]),
   /** SessionURL returns the address that opens the runtime in Colab's web UI. */
   sessionURL: bind<[string], string>("Colab.SessionURL", (name: string) => [name]),
   /**
