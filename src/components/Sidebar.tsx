@@ -12,6 +12,7 @@ import {
   TerminalSquare,
 } from "lucide-react";
 import type { Account, Session, Usage } from "../lib/api";
+import { AccountMenu } from "./AccountMenu";
 import { cx, timeAgo } from "../lib/format";
 import { cellsStore, useStore } from "../lib/store";
 import { Badge, IconButton, Spinner, StatusDot } from "./ui";
@@ -32,6 +33,7 @@ export function Sidebar({
   usageLoading,
   onRefreshUsage,
   account,
+  onAccountChanged,
   version,
   theme,
   setTheme,
@@ -50,6 +52,7 @@ export function Sidebar({
   usageLoading: boolean;
   onRefreshUsage: () => void;
   account: Account | null;
+  onAccountChanged: () => void;
   version: string;
   theme: Theme;
   setTheme: (t: Theme) => void;
@@ -165,9 +168,7 @@ export function Sidebar({
           </div>
         </div>
         <div className="mt-2 flex items-center gap-1">
-          <div className="min-w-0 flex-1 truncate px-1 text-[11px] text-muted-foreground" title={account?.email}>
-            {account?.email ?? ""}
-          </div>
+          <AccountMenu email={account?.email ?? ""} running={sessions?.filter((s) => s.local).length ?? 0} onChanged={onAccountChanged} />
           <IconButton label="CLI 命令日志" active={activityOpen} onClick={toggleActivity} className="relative">
             <TerminalSquare className="size-4" />
             {runningCount > 0 && <span className="absolute top-1 right-1 size-1.5 rounded-full bg-accent" />}

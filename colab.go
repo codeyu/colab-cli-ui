@@ -146,9 +146,13 @@ var (
 
 // Usage returns the compute-unit balance and the hourly rate.
 func (c *Colab) Usage(ctx context.Context) (Usage, error) {
+	return c.usageOf(ctx, false)
+}
+
+func (c *Colab) usageOf(ctx context.Context, quiet bool) (Usage, error) {
 	// The debug log carries the server's whole reply, eligibility included,
 	// which `colab usage` itself does not print.
-	out, err := c.run(ctx, "", "--logtostderr", "usage")
+	out, err := c.runWith(ctx, "", quiet, "--logtostderr", "usage")
 	if err != nil {
 		return Usage{}, err
 	}
@@ -249,7 +253,7 @@ func (c *Colab) Sessions(ctx context.Context) ([]Session, error) {
 		local = []Session{}
 	}
 	if statusErr == nil {
-		dropForwardsExcept(local)
+		c.dropForwardsExcept(local)
 	}
 	return local, nil
 }
@@ -289,6 +293,14 @@ func (c *Colab) CreateSession(ctx context.Context, opts NewSessionOptions, out *
 	if err := checkName(opts.Name); err != nil {
 		return err
 	}
+	// Pin the account: the checks and the clean-up below must not follow a
+	// switch made meanwhile. Names are kept unique across accounts, as
+	// commands on a session find its account by its name.
+	acct := c.accountFor(ctx, nil)
+	ctx = withAccount(ctx, acct)
+	if owner := c.sessionOwner(opts.Name); owner != "" && owner != acct {
+		return fmt.Errorf("另一个账号上已有名为 %s 的会话，请换一个名字", opts.Name)
+	}
 	// `colab new` with a name already in use overwrites its record, and the
 	// runtime it named keeps billing without one.
 	before, err := c.serverEndpoints(ctx)
@@ -306,7 +318,7 @@ func (c *Colab) CreateSession(ctx context.Context, opts NewSessionOptions, out *
 		return nil
 	}
 	// The request may have been granted anyway: stop what it allocated.
-	if did := c.reapAfterFailedNew(opts.Name, before); did != "" {
+	if did := c.reapAfterFailedNew(acct, opts.Name, before); did != "" {
 		return fmt.Errorf("%w（%s）", err, did)
 	}
 	return err
@@ -401,15 +413,10 @@ func (c *Colab) OpenTerminal(name, kind string) error {
 	if err != nil {
 		return err
 	}
-	var args []string
-	if s.Auth != "" && s.Auth != "oauth2" {
-		args = append(args, "--auth", s.Auth)
-	}
-	if s.ConfigPath != "" {
-		args = append(args, "--config", s.ConfigPath)
-	}
-	args = append(args, kind, "-s", name)
-	return openTerminal(bin, args, "colab "+kind+" "+name, c.cliEnv())
+	tail := []string{kind, "-s", name}
+	acct := c.accountFor(context.Background(), tail)
+	args := append(c.globalArgs(acct, tail), tail...)
+	return openTerminal(bin, args, "colab "+kind+" "+name, c.cliEnv(accountEnv(acct)...))
 }
 
 // ---------------------------------------------------------------------------

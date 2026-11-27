@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 )
@@ -29,11 +28,11 @@ type sessionRecord struct {
 }
 
 func (c *Colab) sessionRecord(name string) (sessionRecord, error) {
-	p := c.settings().ConfigPath
-	if p == "" {
-		home, _ := os.UserHomeDir()
-		p = filepath.Join(home, ".config", "colab-cli", "sessions.json")
+	owner := c.sessionOwner(name)
+	if owner == "" {
+		owner = activeAccount()
 	}
+	p := c.statePath(owner)
 	b, err := os.ReadFile(p)
 	if err != nil {
 		return sessionRecord{}, err

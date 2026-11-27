@@ -49,7 +49,11 @@ func ipv4HookDir() string {
 
 // withIPv4First returns env with the hook's directory first on PYTHONPATH.
 func withIPv4First(env []string) []string {
-	dir := ipv4HookDir()
+	return withPythonPath(env, ipv4HookDir())
+}
+
+// withPythonPath returns env with dir first on PYTHONPATH.
+func withPythonPath(env []string, dir string) []string {
 	if dir == "" {
 		return env
 	}
@@ -77,6 +81,12 @@ func (c *Colab) cliEnv(extra ...string) []string {
 	env := append(os.Environ(), extra...)
 	if c.settings().IPv4First {
 		env = withIPv4First(env)
+	}
+	// An account's keyring backend (see accountEnv).
+	for _, kv := range extra {
+		if dir, ok := strings.CutPrefix(kv, "COLAB_UI_PYPATH="); ok {
+			env = withPythonPath(env, dir)
+		}
 	}
 	return env
 }

@@ -117,29 +117,46 @@ func (c *Colab) command(ctx context.Context, args ...string) (*exec.Cmd, string,
 	if err != nil {
 		return nil, "", err
 	}
-	var full []string
-	if s.Auth != "" && s.Auth != "oauth2" {
-		full = append(full, "--auth", s.Auth)
-	}
-	if s.ConfigPath != "" && !containsArg(args, "--config") {
-		full = append(full, "--config", s.ConfigPath)
-	}
-	if s.OAuthConfig != "" {
-		full = append(full, "-c", s.OAuthConfig)
-	}
+	acct := c.accountFor(ctx, args)
+	full := c.globalArgs(acct, args)
 	full = append(full, args...)
 	cmd := exec.CommandContext(ctx, bin, full...)
-	cmd.Env = c.cliEnv(
+	cmd.Env = c.cliEnv(append([]string{
 		"PYTHONIOENCODING=utf-8",
 		"PYTHONUTF8=1",
 		"PYTHONUNBUFFERED=1",
 		"COLUMNS=160",
 		"TERM=xterm-256color",
-	)
+	}, accountEnv(acct)...)...)
 	cmd.WaitDelay = 3 * time.Second
 	hideWindow(cmd)
 	display := "colab " + quoteArgs(full)
 	return cmd, display, nil
+}
+
+// globalArgs are the flags before the command: the sign-in method, the
+// account's state file (unless args name one) and the OAuth client.
+func (c *Colab) globalArgs(acct string, args []string) []string {
+	s := c.settings()
+	var full []string
+	if s.Auth != "" && s.Auth != "oauth2" {
+		full = append(full, "--auth", s.Auth)
+	}
+	if !containsArg(args, "--config") {
+		full = append(full, c.configArgs(acct)...)
+	}
+	if s.OAuthConfig != "" {
+		full = append(full, "-c", s.OAuthConfig)
+	}
+	return full
+}
+
+// signInLost tells the page the sign-in is gone, when it is the active
+// account's: another account's lapsed sign-in shows in the account list.
+func signInLost(ctx context.Context) {
+	if id, _ := ctx.Value(accountKey{}).(string); id == "" || id == activeAccount() {
+		AuthLost.Broadcast(true)
+	}
 }
 
 func quoteArgs(args []string) string {
@@ -167,6 +184,7 @@ func (c *Colab) runQuiet(ctx context.Context, stdin string, args ...string) (str
 }
 
 func (c *Colab) runWith(ctx context.Context, stdin string, quiet bool, args ...string) (string, error) {
+	ctx = withAccount(ctx, c.accountFor(ctx, args))
 	cmd, display, err := c.command(ctx, args...)
 	if err != nil {
 		return "", err
@@ -187,7 +205,7 @@ func (c *Colab) runWith(ctx context.Context, stdin string, quiet bool, args ...s
 		c.finish(&entry, out, err)
 	}
 	if err != nil && needsLogin(out) {
-		AuthLost.Broadcast(true)
+		signInLost(ctx)
 	}
 	if err != nil {
 		var exitErr *exec.ExitError
@@ -223,6 +241,7 @@ func (c *Colab) finish(entry *ActivityEntry, out string, err error) {
 // stream runs colab and sends what it prints to out as it arrives. Lines the
 // CLI prints for saved images become image chunks.
 func (c *Colab) stream(ctx context.Context, stdin string, out *mygo.Channel[Chunk], args ...string) error {
+	ctx = withAccount(ctx, c.accountFor(ctx, args))
 	return c.streamCmd(ctx, stdin, out, func(ctx context.Context) (*exec.Cmd, string, error) {
 		return c.command(ctx, args...)
 	})
@@ -284,7 +303,7 @@ func (c *Colab) streamCmd(ctx context.Context, stdin string, out *mygo.Channel[C
 	c.finish(&entry, text, err)
 	if err != nil {
 		if needsLogin(text) {
-			AuthLost.Broadcast(true)
+			signInLost(ctx)
 			return errors.New("Colab CLI 的登录已失效，请重新登录")
 		}
 		if ctx.Err() != nil {

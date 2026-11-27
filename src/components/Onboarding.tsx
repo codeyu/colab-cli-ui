@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Check, Copy, ExternalLink, LogIn, RefreshCw } from "lucide-react";
-import { Colab, errorMessage, streamCall, type AuthState, type Chunk, type SetupStatus } from "../lib/api";
+import { Colab, errorMessage, streamCall, type AuthState, type Chunk, type SavedAccount, type SetupStatus } from "../lib/api";
 import { cx } from "../lib/format";
 import { toast } from "../lib/store";
 import { Output } from "./Output";
@@ -203,6 +203,14 @@ function LoginStep({ auth, onRecheck }: { auth: AuthState | null; onRecheck: () 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [adc, setAdc] = useState(false);
+  const [others, setOthers] = useState<SavedAccount[]>([]);
+
+  // An added account whose sign-in lapsed: offer the others too.
+  useEffect(() => {
+    void Colab.accounts()
+      .then((st) => setOthers(st.accounts.filter((a) => a.id !== st.active && a.email)))
+      .catch(() => {});
+  }, []);
 
   if (auth === null) {
     return (
@@ -302,6 +310,23 @@ function LoginStep({ auth, onRecheck }: { auth: AuthState | null; onRecheck: () 
         </>
       )}
       {error && <div className="text-xs break-words text-danger">{error}</div>}
+      {others.length > 0 && url === null && (
+        <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
+          或切换到：
+          {others.map((a) => (
+            <button
+              key={a.id}
+              className="rounded-md border border-border px-1.5 py-0.5 hover:bg-muted hover:text-foreground"
+              onClick={async () => {
+                await Colab.switchAccount(a.id);
+                await onRecheck();
+              }}
+            >
+              {a.email}
+            </button>
+          ))}
+        </div>
+      )}
       <button className="self-start text-[11px] text-muted-foreground hover:text-foreground" onClick={() => setAdc((v) => !v)}>
         {adc ? "收起" : "改用 gcloud 登录（ADC）"}
       </button>

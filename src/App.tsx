@@ -306,6 +306,14 @@ export function App() {
         usageLoading={usageLoading}
         onRefreshUsage={loadUsage}
         account={account}
+        onAccountChanged={() => {
+          setView({ kind: "home" });
+          setSessions(null);
+          setUsage(null);
+          setAccount(null);
+          setAuth(null);
+          void boot();
+        }}
         version={env?.version ?? ""}
         theme={theme}
         setTheme={setTheme}

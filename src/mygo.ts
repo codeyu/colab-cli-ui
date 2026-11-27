@@ -12,6 +12,24 @@ export interface Account {
   scopes: string[];
 }
 
+/** AccountUsage is an account's balance, for the account list. */
+export interface AccountUsage {
+  id: string;
+  signedIn: boolean;
+  balance: number;
+  ratePerHour: number;
+  assignments: number;
+  error?: string;
+}
+
+/** AccountsState lists the accounts and which one is active. */
+export interface AccountsState {
+  active: string;
+  accounts: SavedAccount[];
+  /** Supported is false with ADC sign-in, which has no accounts to switch. */
+  supported: boolean;
+}
+
 /** ActivityEntry describes one invocation of the colab CLI. */
 export interface ActivityEntry {
   id: number;
@@ -246,6 +264,14 @@ export interface RunOptions {
   name: string;
 }
 
+/** SavedAccount is a Google account the app can use. */
+export interface SavedAccount {
+  id: string;
+  email: string;
+  /** Added is when it was added, in Unix milliseconds (0 for default). */
+  added: number;
+}
+
 /** Session is a Colab runtime: a VM with a Jupyter kernel. */
 export interface Session {
   name: string;
@@ -386,6 +412,15 @@ export interface Usage {
 
 /** Colab drives the google-colab-cli `colab` command for the page. */
 export const Colab = {
+  /** Accounts lists the accounts. */
+  accounts: bind<[], AccountsState>("Colab.Accounts", () => []),
+  /** AccountsUsage reads every account's balance and running runtimes at once. */
+  accountsUsage: bind<[], AccountUsage[]>("Colab.AccountsUsage", () => []),
+  /**
+   * AddAccountStart starts signing in another Google account and returns the
+   * Google address to open; LoginFinish completes it.
+   */
+  addAccountStart: bind<[], string>("Colab.AddAccountStart", () => []),
   /**
    * AddForward forwards 127.0.0.1:localPort to remotePort on the session's VM.
    * localPort 0 takes remotePort when it is free, else any free port. It
@@ -522,6 +557,12 @@ export const Colab = {
    * endpoint under a placeholder name, and the CLI's own client releases it.
    */
   releaseOrphan: bind<[string], void>("Colab.ReleaseOrphan", (endpoint: string) => [endpoint]),
+  /**
+   * RemoveAccount forgets an account added in the app, and its sign-in. One
+   * that still has runtimes this app started is refused: they would bill on
+   * with nothing left to stop them.
+   */
+  removeAccount: bind<[string], void>("Colab.RemoveAccount", (id: string) => [id]),
   /** RemoveFile deletes a file on the VM. */
   removeFile: bind<[string, string], string>("Colab.RemoveFile", (name: string, remote: string) => [name, remote]),
   /** RemoveForward stops forwarding a port. */
@@ -571,6 +612,8 @@ export const Colab = {
   stopLLM: bind<[string], void>("Colab.StopLLM", (name: string) => [name]),
   /** StopSession releases a runtime. */
   stopSession: bind<[string], string>("Colab.StopSession", (name: string) => [name]),
+  /** SwitchAccount makes an account the active one. */
+  switchAccount: bind<[string], void>("Colab.SwitchAccount", (id: string) => [id]),
   /**
    * Upload asks for local files and uploads them into a directory on the VM. It
    * returns the remote paths written.

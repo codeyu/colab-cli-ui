@@ -43,6 +43,8 @@ func (c *Colab) ReleaseOrphan(ctx context.Context, endpoint string) error {
 	if !endpointRe.MatchString(endpoint) {
 		return fmt.Errorf("endpoint 无效：%q", endpoint)
 	}
+	// The temporary state file's "orphan" must not be looked up by name.
+	ctx = withAccount(ctx, c.accountFor(ctx, nil))
 	dir, err := os.MkdirTemp("", "colab-ui-orphan-")
 	if err != nil {
 		return err
@@ -95,8 +97,8 @@ func (c *Colab) endpointGone(ctx context.Context, endpoint string) (bool, error)
 // have allocated anyway: the request can still be granted after the CLI gave
 // up or was killed. It looks right away and again a little later, and
 // returns what it did, for the error message.
-func (c *Colab) reapAfterFailedNew(name string, before map[string]Session) string {
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+func (c *Colab) reapAfterFailedNew(acct, name string, before map[string]Session) string {
+	ctx, cancel := context.WithTimeout(withAccount(context.Background(), acct), 3*time.Minute)
 	defer cancel()
 	var done []string
 	for _, wait := range []time.Duration{3 * time.Second, 20 * time.Second} {

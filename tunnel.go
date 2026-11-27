@@ -201,16 +201,21 @@ func closeForwardsOf(session string) {
 
 // dropForwardsExcept stops the forwards of sessions no longer running, as
 // one the watchdog released.
-func dropForwardsExcept(running []Session) {
+func (c *Colab) dropForwardsExcept(running []Session) {
 	alive := map[string]bool{}
 	for _, s := range running {
 		if s.Local {
 			alive[s.Name] = true
 		}
 	}
+	active := activeAccount()
 	tunnels.Lock()
 	var gone []string
 	for name := range tunnels.links {
+		// Sessions of another account are not in this list.
+		if owner := c.sessionOwner(name); owner != "" && owner != active {
+			continue
+		}
 		if !alive[name] {
 			gone = append(gone, name)
 		}

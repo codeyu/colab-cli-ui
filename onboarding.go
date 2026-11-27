@@ -121,9 +121,12 @@ func needsLogin(out string) bool {
 // AuthStatus checks the credentials with `colab whoami`. It never starts a
 // sign-in: with no input the CLI's prompt fails at once.
 func (c *Colab) AuthStatus(ctx context.Context) AuthState {
-	out, err := c.run(ctx, "", "whoami")
+	acct := activeAccount()
+	out, err := c.run(withAccount(ctx, acct), "", "whoami")
 	if err == nil {
-		return AuthState{LoggedIn: true, Account: parseWhoami(out)}
+		a := parseWhoami(out)
+		c.rememberEmail(acct, a.Email)
+		return AuthState{LoggedIn: true, Account: a}
 	}
 	if needsLogin(out) {
 		return AuthState{NeedsLogin: true}
@@ -178,6 +181,7 @@ func (b *syncBuffer) String() string {
 }
 
 type loginProc struct {
+	account string
 	cmd    *exec.Cmd
 	stdin  io.WriteCloser
 	out    *syncBuffer
@@ -202,12 +206,17 @@ func stopLogin() {
 // When the CLI turns out to be signed in already it returns "" and nothing
 // more is needed.
 func (c *Colab) LoginStart(ctx context.Context) (string, error) {
+	return c.loginStart(ctx, activeAccount())
+}
+
+// loginStart is LoginStart for an account, new or not.
+func (c *Colab) loginStart(ctx context.Context, account string) (string, error) {
 	loginMu.Lock()
 	defer loginMu.Unlock()
 	stopLogin()
 
 	// The process outlives this call while the user signs in.
-	pctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
+	pctx, cancel := context.WithTimeout(withAccount(context.Background(), account), 15*time.Minute)
 	cmd, _, err := c.command(pctx, "whoami")
 	if err != nil {
 		cancel()
@@ -224,7 +233,7 @@ func (c *Colab) LoginStart(ctx context.Context) (string, error) {
 		cancel()
 		return "", err
 	}
-	p := &loginProc{cmd: cmd, stdin: stdin, out: buf, done: make(chan error, 1), cancel: cancel}
+	p := &loginProc{account: account, cmd: cmd, stdin: stdin, out: buf, done: make(chan error, 1), cancel: cancel}
 	go func() { p.done <- cmd.Wait() }()
 
 	deadline := time.After(60 * time.Second)
@@ -285,6 +294,9 @@ func (c *Colab) LoginFinish(ctx context.Context, code string) (AuthState, error)
 			return AuthState{NeedsLogin: true}, errors.New(msg)
 		}
 		st := AuthState{LoggedIn: true, Account: parseWhoami(out)}
+		if _, err := c.finishAdd(p.account, st.Account.Email); err != nil {
+			return st, err
+		}
 		if strings.Contains(out, "Could not save the OAuth token") {
 			st.Error = "登录成功，但令牌没能存入系统凭据管理器，下次还需要重新登录"
 		}
