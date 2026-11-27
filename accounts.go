@@ -45,7 +45,7 @@ type SavedAccount struct {
 }
 
 type accountsFile struct {
-	Active   string    `json:"active"`
+	Active   string         `json:"active"`
 	Accounts []SavedAccount `json:"accounts"`
 }
 
@@ -238,7 +238,7 @@ func (c *Colab) sessionOwner(name string) string {
 
 // AccountsState lists the accounts and which one is active.
 type AccountsState struct {
-	Active   string    `json:"active"`
+	Active   string         `json:"active"`
 	Accounts []SavedAccount `json:"accounts"`
 	// Supported is false with ADC sign-in, which has no accounts to switch.
 	Supported bool `json:"supported"`

@@ -182,11 +182,11 @@ func (b *syncBuffer) String() string {
 
 type loginProc struct {
 	account string
-	cmd    *exec.Cmd
-	stdin  io.WriteCloser
-	out    *syncBuffer
-	done   chan error
-	cancel context.CancelFunc
+	cmd     *exec.Cmd
+	stdin   io.WriteCloser
+	out     *syncBuffer
+	done    chan error
+	cancel  context.CancelFunc
 }
 
 var (
