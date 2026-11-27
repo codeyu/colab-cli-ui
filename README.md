@@ -5,7 +5,7 @@
 <h1 align="center">Colab CLI UI</h1>
 
 <p align="center">
-  <a href="https://github.com/googlecolab/google-colab-cli">google-colab-cli</a> 的桌面客户端：申请 CPU / GPU / TPU 运行时、执行代码、管理文件、从 HuggingFace 选模型、一键部署大模型 API、端口转发、多账号切换，用完一键释放。
+  <a href="https://github.com/googlecolab/google-colab-cli">google-colab-cli</a> 的桌面客户端：申请 CPU / GPU / TPU 运行时、执行代码、管理文件、从 HuggingFace 选模型、任务库（批量语音识别等）、一键部署大模型 API、端口转发、多账号切换，用完一键释放。
 </p>
 
 <p align="center">
@@ -47,7 +47,7 @@
 
 | 界面 | 对应的 CLI 命令 |
 | --- | --- |
-| 新建会话：CPU / T4 / L4 / G4 / A100 / H100 / TPU v5e-1 / v6e-1，可选高内存；显示每小时大约消耗多少 CU；账号无资格的加速器会变灰；不允许重名；取消或失败后自动释放可能已分配的虚拟机 | `colab new -s NAME --gpu/--tpu --high-mem` |
+| 新建会话：CPU / T4 / L4 / G4 / A100 / H100 / TPU v5e-1 / v6e-1，可选高内存；显示每小时大约消耗多少 CU；账号无资格的加速器会变灰；不允许重名；取消或失败后自动释放可能已分配的虚拟机；Colab 暂时没有资源时可自动重试 N 次 | `colab new -s NAME --gpu/--tpu --high-mem` |
 | 启动脚本：从历史记录里挑选步骤保存，新建会话时选择，开机后自动执行（需要时先挂载 Drive） | `colab exec` |
 | 多账号：添加多个 Google 账号，一键切换，同时查看各账号的余额和运行中的虚拟机；对会话的操作自动使用它所属的账号 | 每个账号独立的凭据和 `--config` 状态文件 |
 | 托盘图标：显示运行中的虚拟机、已运行时长和大约花费；有虚拟机在计费时关窗口会留在托盘 | — |
@@ -69,15 +69,16 @@
 | REPL / SSH / 挂载 Drive / VM 端 GCP 授权（在新终端窗口中打开） | `colab repl / ssh / drivemount / auth` |
 | 重启内核、释放会话、全部释放 | `colab restart-kernel`、`colab stop [--all]` |
 | 一次性任务：新建 VM → 运行脚本 → 自动释放 | `colab run` |
+| 任务库：把常做的事保存成任务，一键运行——选文件和参数，自动开机、上传、在 VM 后台处理、把结果下载到本地文件夹、释放虚拟机；内置「批量语音识别」（Whisper large-v3-turbo / large-v3 / Kotoba-Whisper / SenseVoice 等，输出 txt / srt / vtt / json）和「大模型 API」；可新建、编辑、导入导出任务 | `colab new`、SSH 传文件、`colab exec`（后台任务） |
 | CLI 命令日志（Ctrl+\`）：界面执行过的每条命令及其输出 | — |
-| 设置：colab 路径、`--auth oauth2/adc`、`--config`、`-c`、优先使用 IPv4、费用保护默认值、HuggingFace token 与搜索地址、启动脚本管理 | 全局参数 |
+| 设置：colab 路径、`--auth oauth2/adc`、`--config`、`-c`、优先使用 IPv4、费用保护默认值、创建失败时的重试次数、HuggingFace token 与搜索地址、启动脚本管理 | 全局参数 |
 
 ## 数据与凭据
 
 - **Google 登录令牌**由 CLI 自己保存在系统凭据管理器（Windows 凭据管理器）中，本软件不读取。默认账号用 CLI 原来的那条记录；在软件里添加的账号各有一条（服务名为 `google-colab-cli@<账号 ID>`），会话状态文件在 `%APPDATA%\Colab CLI UI\accounts\<账号 ID>\`。终端里直接运行的 `colab` 始终使用默认账号。
 - **端口转发用的 SSH 密钥**由本软件生成，保存在 `%APPDATA%\Colab CLI UI\ssh\`，不使用你的 `~/.ssh`。
 - **HuggingFace token** 保存在系统凭据管理器中。下载需授权的模型时，它以文件形式经 `colab upload` 传给 VM，不会出现在会话历史里（`colab exec` 执行的代码会被写进历史）。
-- **设置、启动脚本和账号列表**保存在 `%APPDATA%\Colab CLI UI\` 下（`settings.json`、`startup-scripts.json`、`accounts.json`）。
+- **设置、启动脚本、任务库和账号列表**保存在 `%APPDATA%\Colab CLI UI\` 下（`settings.json`、`startup-scripts.json`、`tasks.json`、`accounts.json`）。
 - 界面里的 CLI 命令日志会隐藏含凭据的调试行；CLI 自己的 `~/.config/colab-cli/colab.log` 也会把令牌替换成 `REDACTED`。
 
 ## 开发
@@ -105,6 +106,7 @@ magick -background none RSVG:resources/icon.svg -resize 1024x1024 -depth 8 PNG32
 - `colab.go`：绑定给前端的 `Colab` 服务（会话、执行、文件、监控、历史）
 - `onboarding.go`：首次使用引导（检测 uv、安装 CLI、在软件内登录）
 - `hf.go`：HuggingFace 搜索、模型信息、下载到 VM、token
+- `tasks.go`、`tasks/`：任务库与内置任务脚本（`tasks/asr.py` 批量语音识别）
 - `accounts.go`：多账号（每个账号独立的凭据记录和会话状态文件）
 - `tunnel.go`：端口转发（WebSocket 上的 SSH 隧道）
 - `llmapi.go`：用 Ollama 部署模型 API
